@@ -1,0 +1,53 @@
+#APP specific configuration.
+
+comment "------------Project configuration-----------"
+
+config CUSTOM_MEM_MAP
+    bool 
+	select custom_mem_map
+	default y 
+
+config FREETYPE_TINY_FONT_FULL
+    bool
+    default y
+
+if !BSP_USING_BUILT_LCD
+	config LCD_USING_GC9107_MULTI_SCREEN
+		bool
+		default n
+
+    choice
+        prompt "Custom LCD driver"
+        default LCD_USING_TFT_ZJY085_MULTI_SCREEN
+		
+        config LCD_USING_TFT_ZJY085_MULTI_SCREEN
+            bool "0.85 rect SPI LCD(0.85TFT-SPI)--Multi_screen"
+            select LCD_USING_GC9107_MULTI_SCREEN
+            select BSP_LCDC_USING_SPI_DCX_1DATA
+	endchoice
+
+    config LCD_HOR_RES_MAX
+        int
+        default 384 if LCD_USING_TFT_ZJY085_MULTI_SCREEN
+
+
+    config LCD_VER_RES_MAX
+        int
+        default 256 if LCD_USING_TFT_ZJY085_MULTI_SCREEN
+
+
+    config LCD_DPI
+        int
+        default 214 if LCD_USING_TFT_ZJY085_MULTI_SCREEN
+
+
+endif
+
+# 选择字体文件和路径
+menu "Font configuration"
+    config FONT_FILE
+        string "Font file path"
+        default "font/DroidSansFallback.ttf"
+        help
+            Specify the path to the font file used in the application.
+endmenu

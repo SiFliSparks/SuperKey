@@ -1,0 +1,3 @@
+[submodule "SiFli-SDK"]
+	path = SiFli-SDK
+	url = https://github.com/OpenSiFli/SiFli-SDK
