@@ -101,36 +101,25 @@ static int screen_group2_key_handler(int key_idx, button_action_t action, void *
     switch (key_idx) {
         case 0:
             rt_kprintf("[Screen2] Key 1: CPU/GPU info toggle\n");
-            if (led_controller_is_ready()) {
-                event_bus_publish_led_feedback(2, LED_COLOR_WHITE, 100);
-            }
             screen_update_cpu_usage(45.6);
             screen_update_gpu_usage(32.1);
             break;
             
         case 1:
             rt_kprintf("[Screen2] Key 2: Memory/Disk info toggle\n");
-            if (led_controller_is_ready()) {
-                event_bus_publish_led_feedback(2, LED_COLOR_WHITE, 100);
-            }
             screen_update_ram_usage(67.8);
             break;
             
         case 2:
             rt_kprintf("[Screen2] Key 3: Network info toggle\n");
-            if (led_controller_is_ready()) {
-                event_bus_publish_led_feedback(2, LED_COLOR_WHITE, 100);
-            }
             screen_update_net_speeds(2.5, 12.8);
             break;
             
         case 3:
             rt_kprintf("[Screen2] Key 4: Switch to next screen group\n");
-            if (led_controller_is_ready()) {
                 event_bus_publish_led_feedback(2, LED_COLOR_WHITE, 100);
                 event_bus_publish_led_feedback(1, LED_COLOR_WHITE, 100);
                 event_bus_publish_led_feedback(0, LED_COLOR_WHITE, 100);
-            }
             screen_next_group();
             break;
     }
@@ -149,9 +138,6 @@ static int screen_group3_key_handler(int key_idx, button_action_t action, void *
     switch (key_idx) {
         case 0:
             rt_kprintf("[Screen3] Key 1: Enter media control\n");
-            if (led_controller_is_ready()) {
-                
-            }
             if (screen_enter_level2(SCREEN_L2_MEDIA_GROUP, SCREEN_L2_MEDIA_CONTROL) != 0) {
                 rt_kprintf("[Screen3] Failed to enter media control L2\n");
             }
@@ -159,9 +145,6 @@ static int screen_group3_key_handler(int key_idx, button_action_t action, void *
             
         case 1:
             rt_kprintf("[Screen3] Key 2: Enter web control\n");
-            if (led_controller_is_ready()) {
-                
-            }
             if (screen_enter_level2(SCREEN_L2_WEB_GROUP, SCREEN_L2_WEB_CONTROL) != 0) {
                 rt_kprintf("[Screen3] Failed to enter web control L2\n");
             }
@@ -169,9 +152,6 @@ static int screen_group3_key_handler(int key_idx, button_action_t action, void *
             
         case 2:
             rt_kprintf("[Screen3] Key 3: Enter shortcut control\n");
-            if (led_controller_is_ready()) {
-                
-            }
             if (screen_enter_level2(SCREEN_L2_SHORTCUT_GROUP, SCREEN_L2_SHORTCUT_CONTROL) != 0) {
                 rt_kprintf("[Screen3] Failed to enter shortcut control L2\n");
             }
@@ -179,9 +159,6 @@ static int screen_group3_key_handler(int key_idx, button_action_t action, void *
             
         case 3:
             rt_kprintf("[Screen3] Key 4: Switch to next screen group\n");
-            if (led_controller_is_ready()) {
-                
-            }
             screen_next_group();
             break;
     }
@@ -200,30 +177,18 @@ static int screen_l2_time_key_handler(int key_idx, button_action_t action, void 
     switch (key_idx) {
         case 0:
             rt_kprintf("[Screen L2] Key 1: Time detail function 1\n");
-            if (led_controller_is_ready()) {
-                
-            }
             break;
             
         case 1:
             rt_kprintf("[Screen L2] Key 2: Time detail function 2\n");
-            if (led_controller_is_ready()) {
-                
-            }
             break;
             
         case 2:
             rt_kprintf("[Screen L2] Key 3: Time detail function 3\n");
-            if (led_controller_is_ready()) {
-                
-            }
             break;
             
         case 3:
             rt_kprintf("[Screen L2] Key 4: Return to Level 1\n");
-            if (led_controller_is_ready()) {
-                
-            }
             screen_return_to_level1();
             break;
     }
@@ -250,9 +215,6 @@ static int screen_l2_media_key_handler(int key_idx, button_action_t action, void
             } else {
                 rt_kprintf("[Screen L2 Media] HID not ready\n");
             }
-            if (led_controller_is_ready()) {
-                
-            }
             break;
             
         case 1:
@@ -262,9 +224,6 @@ static int screen_l2_media_key_handler(int key_idx, button_action_t action, void
                 rt_kprintf("[Screen L2 Media] Volume- sent\n");
             } else {
                 rt_kprintf("[Screen L2 Media] HID not ready\n");
-            }
-            if (led_controller_is_ready()) {
-                
             }
             break;
             
@@ -276,16 +235,10 @@ static int screen_l2_media_key_handler(int key_idx, button_action_t action, void
             } else {
                 rt_kprintf("[Screen L2 Media] HID not ready\n");
             }
-            if (led_controller_is_ready()) {
-                
-            }
             break;
             
         case 3:
             rt_kprintf("[Screen L2 Media] Key 4: Return to Level 1\n");
-            if (led_controller_is_ready()) {
-                
-            }
             screen_return_to_level1();
             break;
     }
@@ -312,9 +265,6 @@ static int screen_l2_web_key_handler(int key_idx, button_action_t action, void *
             } else {
                 rt_kprintf("[Screen L2 Web] HID not ready\n");
             }
-            if (led_controller_is_ready()) {
-                
-            }
             break;
             
         case 1:
@@ -324,9 +274,6 @@ static int screen_l2_web_key_handler(int key_idx, button_action_t action, void *
                 rt_kprintf("[Screen L2 Web] Page Down sent\n");
             } else {
                 rt_kprintf("[Screen L2 Web] HID not ready\n");
-            }
-            if (led_controller_is_ready()) {
-                
             }
             break;
             
@@ -338,16 +285,10 @@ static int screen_l2_web_key_handler(int key_idx, button_action_t action, void *
             } else {
                 rt_kprintf("[Screen L2 Web] HID not ready\n");
             }
-            if (led_controller_is_ready()) {
-
-            }
             break;
             
         case 3:
             rt_kprintf("[Screen L2 Web] Key 4: Return to Level 1\n");
-            if (led_controller_is_ready()) {
-
-            }
             screen_return_to_level1();
             break;
     }
@@ -374,8 +315,6 @@ static int screen_l2_shortcut_key_handler(int key_idx, button_action_t action, v
             } else {
                 rt_kprintf("[Screen L2 Shortcut] HID not ready\n");
             }
-            if (led_controller_is_ready()) {
-            }
             break;
             
         case 1:
@@ -385,9 +324,6 @@ static int screen_l2_shortcut_key_handler(int key_idx, button_action_t action, v
                 rt_kprintf("[Screen L2 Shortcut] Paste sent\n");
             } else {
                 rt_kprintf("[Screen L2 Shortcut] HID not ready\n");
-            }
-            if (led_controller_is_ready()) {
-
             }
             break;
             
@@ -399,16 +335,10 @@ static int screen_l2_shortcut_key_handler(int key_idx, button_action_t action, v
             } else {
                 rt_kprintf("[Screen L2 Shortcut] HID not ready\n");
             }
-            if (led_controller_is_ready()) {
-                
-            }
             break;
             
         case 3:
             rt_kprintf("[Screen L2 Shortcut] Key 4: Return to Level 1\n");
-            if (led_controller_is_ready()) {
-                
-            }
             screen_return_to_level1();
             break;
     }

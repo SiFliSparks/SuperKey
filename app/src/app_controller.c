@@ -4,7 +4,6 @@
 #include "encoder_controller.h"    
 #include "hid_device.h"
 #include "led_controller.h"
-#include "led_context.h"
 #include "screen_context.h"
 #include "screen.h"
 #include "event_bus.h"
@@ -86,12 +85,6 @@ int app_controller_init(void)
     }
     rt_kprintf("[App] Screen contexts initialized\n");
 
-    if (led_context_init() != 0) {
-        rt_kprintf("[App] Failed to init LED context\n");
-        return -1;
-    }
-    rt_kprintf("[App] LED context initialized\n");
-
     if (encoder_context_activate() != 0) {
         rt_kprintf("[App] Failed to activate encoder context\n");
         return -1;
@@ -131,9 +124,6 @@ int app_controller_deinit(void)
     screen_context_deactivate_all();
     screen_context_deinit_all();
     rt_kprintf("[App] Screen contexts deinitialized\n");
-
-    led_context_deinit();
-    rt_kprintf("[App] LED context deinitialized\n");
 
     led_controller_deinit();
     rt_kprintf("[App] LED controller deinitialized\n");

@@ -14,7 +14,8 @@
 #include "key_manager.h"
 #include "sht30_controller.h"
 #include "data_manager.h" 
-#include "serial_data_handler.h"  // 添加头文件包含
+#include "serial_data_handler.h"
+#include "light_effects.h"
 #include <board.h>
 #include <stdlib.h>
 
@@ -23,62 +24,68 @@ int main(void)
     rt_err_t ret = RT_EOK;
     rt_uint32_t ms;
 
-    rt_kprintf("[1/10] 初始化显示系统...\n");  // 更新计数
+    static rt_tick_t last_stats_report = 0;
+    static rt_tick_t last_memory_check = 0;
+    static rt_tick_t last_hid_check = 0;
+    static uint32_t memory_warning_count = 0;
+    
+    rt_kprintf("[1/10] Initializing display system...\n");
     ret = littlevgl2rtt_init("lcd");
     if (ret != RT_EOK) {
-        rt_kprintf("LVGL初始化失败: %d\n", ret);
+        rt_kprintf("LVGL init failed: %d\n", ret);
         event_bus_deinit();
         return ret;
     }
 
     lv_ex_data_pool_init();
     
-    rt_kprintf("[2/10] 初始化LED控制器...\n");
+    rt_kprintf("[2/10] Initializing LED controller...\n");
     if (led_controller_init() != 0) {
-        rt_kprintf("LED控制器初始化失败\n");
+        rt_kprintf("LED controller init failed\n");
     } else {
-        led_controller_light_led(2, 0xFFFFFF, 800);
-        rt_thread_mdelay(300);
-        led_controller_light_led(1, 0xFFFFFF, 800);
-        rt_thread_mdelay(300);
-        led_controller_light_led(0, 0xFFFFFF, 800);
-        rt_thread_mdelay(50);
+        rt_kprintf("LED controller init success\n");
+        
+        // 初始化灯光效果模块
+        if (light_effects_init() != 0) {
+            rt_kprintf("Light effects module init failed\n");
+        } else {
+            rt_kprintf("Light effects module init success\n");
+        }
     }
     
-    rt_kprintf("[3/10] 初始化事件总线...\n");
+    rt_kprintf("[3/10] Initializing event bus...\n");
     if (event_bus_init() != 0) {
-        rt_kprintf("事件总线初始化失败\n");
+        rt_kprintf("Event bus init failed\n");
         return -1;
     }
     
-    rt_kprintf("[4/10] 初始化数据管理器...\n");
+    rt_kprintf("[4/10] Initializing data manager...\n");
     if (data_manager_init() != 0) {
-        rt_kprintf("数据管理器初始化失败\n");
+        rt_kprintf("Data manager init failed\n");
         event_bus_deinit();
         return -1;
     }
-    rt_kprintf("数据管理器初始化成功\n");
+    rt_kprintf("Data manager init success\n");
     
-    rt_kprintf("[5/10] 初始化串口数据处理器...\n");
-    // 关键修复：添加串口数据处理器初始化
+    rt_kprintf("[5/10] Initializing serial data handler...\n");
     if (serial_data_handler_init() != RT_EOK) {
-        rt_kprintf("串口数据处理器初始化失败\n");
+        rt_kprintf("Serial data handler init failed\n");
         data_manager_deinit();
         event_bus_deinit();
         return -1;
     }
-    rt_kprintf("串口数据处理器初始化成功 (uart1, 1000000 baud)\n");
+    rt_kprintf("Serial data handler init success (uart1, 1000000 baud)\n");
     
-    rt_kprintf("[6/10] 初始化HID系统...\n");
+    rt_kprintf("[6/10] Initializing HID system...\n");
     if (app_controller_init() != 0) {
-        rt_kprintf("HID系统初始化失败\n");
+        rt_kprintf("HID system init failed\n");
         serial_data_handler_deinit();
         data_manager_deinit();
         event_bus_deinit();
         return -1;
     }
     
-    rt_kprintf("[7/10] 初始化SHT30传感器...\n");
+    rt_kprintf("[7/10] Initializing SHT30 sensor...\n");
     if (sht30_controller_init() == RT_EOK) {
         sht30_report_config_t config = {
             .enabled = false,
@@ -88,29 +95,45 @@ int main(void)
         };
         sht30_controller_config_report(&config);
         sht30_controller_start_continuous(5000);
-        rt_kprintf("SHT30传感器初始化成功\n");
+        rt_kprintf("SHT30 sensor init success\n");
     } else {
-        rt_kprintf("SHT30传感器初始化失败\n");
+        rt_kprintf("SHT30 sensor init failed\n");
     }
 
-    rt_kprintf("[8/10] 创建三联屏显示系统...\n");
+    rt_kprintf("[8/10] Creating triple screen display...\n");
     create_triple_screen_display();
     rt_thread_mdelay(500);
     
-    rt_kprintf("[9/10] 系统启动完成，进入主循环...\n");
-    rt_kprintf("[10/10] 串口数据格式: sys_set <key> <value>\n");
-    rt_kprintf("        支持的key: time, date, temp, weather_code, humidity, pressure, city_code\n");
-    rt_kprintf("                   stock_name, stock_price, stock_change\n");
-    rt_kprintf("                   cpu, cpu_temp, mem, gpu, gpu_temp, net_up, net_down\n");
-
-    static rt_tick_t last_stats_report = 0;
-    static rt_tick_t last_memory_check = 0;
-    static rt_tick_t last_hid_check = 0;
-    static uint32_t memory_warning_count = 0;
+    rt_kprintf("[9/10] System startup complete, entering main loop...\n");
+    rt_kprintf("[10/10] Serial data format: sys_set <key> <value>\n");
+    rt_kprintf("        Supported keys: time, date, temp, weather_code, humidity, pressure, city_code\n");
+    rt_kprintf("                       stock_name, stock_price, stock_change\n");
+    rt_kprintf("                       cpu, cpu_temp, mem, gpu, gpu_temp, net_up, net_down\n");
+    
+    // === 选择你想要的呼吸灯效果 ===
+    
+    // 选项1：青色呼吸灯开机动画（执行1次，2秒周期）- 推荐
+    //light_effects_breathing_once(LIGHT_COLOR_CYAN, 2000, 200);
+    
+    // 选项2：蓝色呼吸灯（执行3次）
+     light_effects_breathing(LIGHT_COLOR_BLUE, 2000, 200, 1);
+    
+    // 选项3：白色慢速呼吸（执行1次，3秒周期）
+    // light_effects_breathing_once(LIGHT_COLOR_WHITE, 3000, 180);
+    
+    // 选项4：绿色快速呼吸（执行1次，1.5秒周期）
+    // light_effects_breathing_once(LIGHT_COLOR_GREEN, 1500, 220);
+    
+    // 选项5：红色警告呼吸（执行1次，1秒周期）
+    // light_effects_breathing_once(LIGHT_COLOR_RED, 1000, 255);
 
     while (1) {
         uint32_t ms = lv_timer_handler();
         rt_tick_t now = rt_tick_get();
+        
+        // 更新灯光效果
+        light_effects_update();
+        
         screen_process_switch_request();        
         
         if ((now - last_stats_report) > rt_tick_from_millisecond(300000)) {
@@ -125,7 +148,6 @@ int main(void)
                 }
             }
             
-            // 添加数据状态报告
             char data_status[256];
             if (data_manager_get_data_status(data_status, sizeof(data_status)) == 0) {
                 rt_kprintf("[Main] Data Status: %s\n", data_status);
@@ -167,12 +189,13 @@ int main(void)
         rt_thread_mdelay(ms);
     }
     
-    // 清理资源 - 添加串口数据处理器清理
+    // 清理资源
     cleanup_triple_screen_display();
     app_controller_deinit();
+    light_effects_deinit();
     led_controller_deinit();
     sht30_controller_deinit();
-    serial_data_handler_deinit();  // 添加清理调用
+    serial_data_handler_deinit();
     data_manager_deinit();
     event_bus_deinit();
     
