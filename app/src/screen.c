@@ -6,7 +6,6 @@
 #include "data_manager.h"
 #include "encoder_controller.h"
 #include "event_bus.h"
-#include "led_controller.h"
 #include <rtthread.h>
 #include <time.h>
 #include <string.h>  
@@ -21,22 +20,28 @@ static int screen_encoder_event_handler(const event_t *event, void *user_data)
     if (event->type == EVENT_ENCODER_ROTATED) {
         const event_data_encoder_t *encoder_data = &event->data.encoder;
         
-        rt_kprintf("[Screen] Encoder rotated: delta=%d, level=%d\n", 
-                  encoder_data->delta, screen_core_get_current_level());
+        // 检查当前层级
+        screen_level_t current_level = screen_core_get_current_level();
         
-        if (encoder_data->delta > 0) {
-            /* 顺时针：下一组/页面 */
-            if (screen_core_get_current_level() == SCREEN_LEVEL_1) {
+        if (current_level == SCREEN_LEVEL_2) {
+            // 在L2层级时，编码器不进行屏幕组切换
+            return 0;
+        }
+        
+        // 只在L1层级时进行屏幕组切换
+        if (current_level == SCREEN_LEVEL_1) {
+            if (encoder_data->delta > 0) {
+                // 顺时针：下一组 (修正方向) - 确保循环所有组
                 screen_group_t current = screen_core_get_current_group();
-                screen_group_t next = (current + 1) % SCREEN_GROUP_MAX;
+                screen_group_t next = (current + 1) % SCREEN_GROUP_MAX;  // 包括GROUP_4
                 screen_core_post_switch_group(next, false);
-            }
-        } else if (encoder_data->delta < 0) {
-            /* 逆时针：上一组/页面 */  
-            if (screen_core_get_current_level() == SCREEN_LEVEL_1) {
+                rt_kprintf("[ScreenEncoder] Clockwise: Group %d -> %d\n", current, next);
+            } else if (encoder_data->delta < 0) {
+                // 逆时针：上一组 (修正方向) - 确保循环所有组
                 screen_group_t current = screen_core_get_current_group();
                 screen_group_t prev = (current == 0) ? (SCREEN_GROUP_MAX - 1) : (current - 1);
                 screen_core_post_switch_group(prev, false);
+                rt_kprintf("[ScreenEncoder] Counter-clockwise: Group %d -> %d\n", current, prev);
             }
         }
         
@@ -210,6 +215,8 @@ void screen_next_group(void)
     
     screen_group_t current = screen_core_get_current_group();
     screen_group_t next = (current + 1) % SCREEN_GROUP_MAX;
+        rt_kprintf("[ScreenEncoder] DEBUG: current=%d, next=%d, MAX=%d\n", 
+               current, next, SCREEN_GROUP_MAX);
     screen_core_post_switch_group(next, false);
 }
 

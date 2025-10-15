@@ -8,6 +8,9 @@
 #define ENCODER_DEVICE_NAME1 "encoder1"
 #define ENCODER_POLLING_PERIOD_MS 10
 
+// 只添加最简单的时间去抖
+#define ENCODER_MIN_EVENT_INTERVAL_MS 1000    // 最小事件间隔：120ms
+
 static struct {
     struct rt_device *device;
     encoder_mode_t mode;
@@ -18,6 +21,9 @@ static struct {
     bool initialized;
     bool polling_enabled;
     rt_mutex_t lock;
+    
+    // 只添加一个时间戳用于去抖
+    rt_tick_t last_event_time;
 } g_encoder = {0};
 
 static const char* encoder_mode_names[] = {
@@ -44,17 +50,27 @@ static void encoder_polling_timer_cb(void *parameter)
         }
         
         if (delta != 0) {
-            g_encoder.last_count = current_count;
-            g_encoder.total_count += delta;
+            rt_tick_t current_time = rt_tick_get();
+            rt_tick_t time_since_last = current_time - g_encoder.last_event_time;
             
-            event_data_encoder_t encoder_event = {
-                .delta = delta,
-                .total_count = g_encoder.total_count,
-                .user_data = NULL
-            };
-            
-            event_bus_publish(EVENT_ENCODER_ROTATED, &encoder_event, sizeof(encoder_event),
-                             EVENT_PRIORITY_HIGH, MODULE_ID_ENCODER);
+            // 简单的时间去抖：只在间隔足够时才发布
+            if (time_since_last >= rt_tick_from_millisecond(ENCODER_MIN_EVENT_INTERVAL_MS)) {
+                g_encoder.last_count = current_count;
+                g_encoder.total_count += delta;
+                g_encoder.last_event_time = current_time;
+                
+                // 限制delta为±1，防止大幅跳跃
+                int32_t normalized_delta = (delta > 0) ? 1 : -1;
+                
+                event_data_encoder_t encoder_event = {
+                    .delta = normalized_delta,
+                    .total_count = g_encoder.total_count,
+                    .user_data = NULL
+                };
+                
+                event_bus_publish(EVENT_ENCODER_ROTATED, &encoder_event, sizeof(encoder_event),
+                                 EVENT_PRIORITY_HIGH, MODULE_ID_ENCODER);
+            }
         }
         
         rt_mutex_release(g_encoder.lock);
@@ -68,11 +84,11 @@ int encoder_controller_init(void)
         return 0;
     }
     
-    rt_kprintf("[Encoder] Initializing optimized encoder controller...\n");
+    rt_kprintf("[Encoder] Initializing simple debounced encoder controller...\n");
     
     HAL_PIN_Set(PAD_PA43, GPTIM1_CH1, PIN_NOPULL, 1);
     HAL_PIN_Set(PAD_PA41, GPTIM1_CH2, PIN_NOPULL, 1);
-    rt_kprintf("[Encoder] GPIO pins configured: PA37/PA38 -> GPTIM1_CH1/CH2\n");
+    rt_kprintf("[Encoder] GPIO pins configured: PA43/PA41 -> GPTIM1_CH1/CH2\n");
     
     g_encoder.device = rt_device_find(ENCODER_DEVICE_NAME1);
     if (g_encoder.device == RT_NULL) {
@@ -111,9 +127,11 @@ int encoder_controller_init(void)
     g_encoder.last_count = 0;
     g_encoder.total_count = 0;
     g_encoder.polling_enabled = false;
+    g_encoder.last_event_time = 0;  // 初始化时间戳
+    
     g_encoder.initialized = true;
     
-    rt_kprintf("[Encoder] Optimized encoder controller initialized (timer-based)\n");
+    rt_kprintf("[Encoder] Simple debounced encoder controller initialized\n");
     return 0;
 }
 
@@ -123,7 +141,7 @@ int encoder_controller_deinit(void)
         return 0;
     }
     
-    rt_kprintf("[Encoder] Deinitializing optimized encoder controller...\n");
+    rt_kprintf("[Encoder] Deinitializing encoder controller...\n");
     
     encoder_controller_stop_polling();
     
@@ -144,7 +162,7 @@ int encoder_controller_deinit(void)
     
     memset(&g_encoder, 0, sizeof(g_encoder));
     
-    rt_kprintf("[Encoder] Optimized encoder controller deinitialized\n");
+    rt_kprintf("[Encoder] Encoder controller deinitialized\n");
     return 0;
 }
 
@@ -256,7 +274,8 @@ int encoder_controller_start_polling(void)
     
     rt_thread_mdelay(100);
     
-    rt_kprintf("[Encoder] Polling started with event bus integration (period=%dms)\n", ENCODER_POLLING_PERIOD_MS);
+    rt_kprintf("[Encoder] Simple debounced polling started (period=%dms, min_interval=%dms)\n", 
+              ENCODER_POLLING_PERIOD_MS, ENCODER_MIN_EVENT_INTERVAL_MS);
     return 0;
 }
 

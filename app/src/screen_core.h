@@ -49,6 +49,19 @@ typedef struct {
     } data;
 } screen_message_t;
 
+/**
+ * @brief 获取当前屏幕层级（线程安全）
+ * @return 当前屏幕层级
+ */
+screen_level_t screen_core_get_current_level(void);
+
+/**
+ * @brief 获取当前L2组（线程安全）
+ * @return 当前L2组，如果不在L2层级则返回默认值
+ */
+screen_l2_group_t screen_core_get_current_l2_group(void);
+
+
 /* 屏幕核心管理器 */
 typedef struct {
     /* 消息系统 */
@@ -93,6 +106,7 @@ int screen_core_process_messages(void);
 screen_group_t screen_core_get_current_group(void);
 screen_level_t screen_core_get_current_level(void);
 bool screen_core_is_switching(void);
+
 
 #ifdef __cplusplus
 }

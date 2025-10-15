@@ -1,14 +1,12 @@
 #include "app_controller.h"
-#include "key_manager.h"
-#include "encoder_context.h"       
+#include "key_manager.h"    
 #include "encoder_controller.h"    
 #include "hid_device.h"
-#include "led_controller.h"
 #include "screen_context.h"
 #include "screen.h"
 #include "event_bus.h"
 #include <string.h>
-
+#include "led_compat.h"
 #include <board.h>
 #include "bf0_hal.h"
 #include "rtthread.h"
@@ -61,35 +59,17 @@ int app_controller_init(void)
     }
     rt_kprintf("[App] Key manager initialized\n");
 
-    if (led_controller_init() != 0) {
-        rt_kprintf("[App] Failed to init LED controller\n");
-        return -1;
-    }
-    rt_kprintf("[App] LED controller initialized\n");
-
     if (encoder_controller_init() != 0) {
         rt_kprintf("[App] Failed to init encoder controller\n");
         return -1;
     }
     rt_kprintf("[App] Encoder controller initialized\n");
 
-    if (encoder_context_init() != 0) {
-        rt_kprintf("[App] Failed to init encoder context\n");
-        return -1;
-    }
-    rt_kprintf("[App] Encoder context initialized\n");
-
     if (screen_context_init_all() != 0) {
         rt_kprintf("[App] Failed to init screen contexts\n");
         return -1;
     }
     rt_kprintf("[App] Screen contexts initialized\n");
-
-    if (encoder_context_activate() != 0) {
-        rt_kprintf("[App] Failed to activate encoder context\n");
-        return -1;
-    }
-    rt_kprintf("[App] Encoder context activated\n");
 
     screen_group_t current_group = screen_get_current_group();
     if (screen_context_activate_for_group(current_group) != 0) {
@@ -103,7 +83,6 @@ int app_controller_init(void)
 
     g_app_initialized = true;
     rt_kprintf("[App] Application controller initialized successfully\n");
-    rt_kprintf("[App] System ready - encoder, HID, LED, and screen controls active\n");
 
     return 0;
 }
@@ -116,8 +95,6 @@ int app_controller_deinit(void)
 
     rt_kprintf("[App] Deinitializing application controller...\n");
 
-    encoder_context_deactivate();
-    encoder_context_deinit();
     encoder_controller_deinit();
     rt_kprintf("[App] Encoder system deinitialized\n");
 
@@ -125,8 +102,6 @@ int app_controller_deinit(void)
     screen_context_deinit_all();
     rt_kprintf("[App] Screen contexts deinitialized\n");
 
-    led_controller_deinit();
-    rt_kprintf("[App] LED controller deinitialized\n");
 
     key_manager_deinit();
     rt_kprintf("[App] Key manager deinitialized\n");
@@ -164,58 +139,23 @@ bool app_controller_is_encoder_available(void)
 
 int app_controller_switch_mode(const char *mode_name)
 {
-    if (!mode_name || !g_app_ctrl.initialized) {
-        rt_kprintf("[app_ctrl] Invalid parameter or not initialized\n");
-        return -RT_EINVAL;
-    }
-
     key_context_id_t new_ctx = KEY_CTX_NONE;
-    int ret = 0;
-
+    
     if (strcmp(mode_name, "hid") == 0) {
         new_ctx = KEY_CTX_HID_SHORTCUT;
-    } else if (strcmp(mode_name, "encoder") == 0) {
-        if (!g_app_ctrl.encoder_enabled) {
-            rt_kprintf("[app_ctrl] Encoder not available\n");
-            return -RT_ERROR;
-        }
-        new_ctx = KEY_CTX_VOLUME_CONTROL;
     } else if (strcmp(mode_name, "none") == 0) {
         new_ctx = KEY_CTX_NONE;
     } else {
-        rt_kprintf("[app_ctrl] Unsupported mode: %s (supported: 'hid', 'encoder', 'none')\n", mode_name);
+        rt_kprintf("[app_ctrl] Unsupported mode: %s (supported: 'hid', 'none')\n", mode_name);
         return -RT_EINVAL;
     }
-
-    if (new_ctx == KEY_CTX_VOLUME_CONTROL) {
-        key_manager_activate_context(KEY_CTX_NONE);
-        ret = encoder_context_activate();
-        if (ret == 0) {
-            strcpy(g_app_ctrl.current_mode, mode_name);
-            rt_kprintf("[app_ctrl] Switched to encoder mode\n");
-        }
-    } else {
-        if (strcmp(g_app_ctrl.current_mode, "encoder") == 0) {
-            encoder_context_deactivate();
-        }
-        
-        ret = key_manager_activate_context(new_ctx);
-        if (ret == 0) {
-            strcpy(g_app_ctrl.current_mode, mode_name);
-            rt_kprintf("[app_ctrl] Switched to mode: %s\n", mode_name);
-            
-            g_app_ctrl.hid_context_activated = (new_ctx == KEY_CTX_HID_SHORTCUT);
-            
-            if (new_ctx == KEY_CTX_HID_SHORTCUT) {
-                g_app_ctrl.hid_context_activated = (new_ctx == KEY_CTX_HID_SHORTCUT);
-            }
-        }
+    
+    int ret = key_manager_activate_context(new_ctx);
+    if (ret == 0) {
+        strcpy(g_app_ctrl.current_mode, mode_name);
+        g_app_ctrl.hid_context_activated = (new_ctx == KEY_CTX_HID_SHORTCUT);
     }
-
-    if (ret != 0) {
-        rt_kprintf("[app_ctrl] Failed to switch to mode %s: %d\n", mode_name, ret);
-    }
-
+    
     return ret;
 }
 

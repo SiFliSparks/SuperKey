@@ -1,15 +1,10 @@
 /**
- * @file screen_ui_manager.c
- * @brief 线程安全的UI管理器实现 - 从原screen.c迁移的UI构建逻辑
- * 
- * 关键特性：
- * - 所有UI操作仅在GUI主线程中执行
- * - 模块化的UI构建和更新函数
- * - 安全的对象生命周期管理
- * - 支持动态缩放和字体
+ * @file screen_ui_manager.c - 修复编译错误版本
+ * @brief 线程安全的UI管理器实现 - 修复g_core访问问题
  */
 
 #include "screen_ui_manager.h"
+#include "screen_core.h"  // 添加这个头文件引用
 #include "data_manager.h"
 #include "sht30_controller.h"
 #include "screen_context.h"
@@ -47,6 +42,27 @@ static const char* chinese_weekdays[] = {
 extern const unsigned char xiaozhi_font[];
 extern const int xiaozhi_font_size;
 
+/* 数字图片资源声明 */
+extern const lv_image_dsc_t t0;  // 数字0图片
+extern const lv_image_dsc_t t1;  // 数字1图片
+extern const lv_image_dsc_t t2;  // 数字2图片
+extern const lv_image_dsc_t t3;  // 数字3图片
+extern const lv_image_dsc_t t4;  // 数字4图片
+extern const lv_image_dsc_t t5;  // 数字5图片
+extern const lv_image_dsc_t t6;  // 数字6图片
+extern const lv_image_dsc_t t7;  // 数字7图片
+extern const lv_image_dsc_t t8;  // 数字8图片
+extern const lv_image_dsc_t t9;  // 数字9图片
+
+
+/* 数字图片资源数组，便于通过索引访问 */
+static const lv_image_dsc_t* digit_images[10] = {
+    &t0, &t1, &t2, &t3, &t4, &t5, &t6, &t7, &t8, &t9
+};
+
+/* 木鱼图片资源声明 - 需要添加到文件顶部 */
+extern const lv_image_dsc_t muyu;  // 木鱼图片资源
+
 /*********************
  *  STATIC VARIABLES
  *********************/
@@ -79,8 +95,14 @@ static void build_left_media_panel(lv_obj_t *parent);
 static void build_middle_web_panel(lv_obj_t *parent);
 static void build_right_shortcut_panel(lv_obj_t *parent);
 
-/* L2 UI构建 */
+/* L2 UI构建 - 数字时钟相关 */
+static const lv_image_dsc_t* get_digit_image(int digit);
+static const lv_image_dsc_t* get_muyu_image(void);
+static lv_obj_t* create_digit_image(lv_obj_t *parent, int digit, lv_coord_t x_offset, lv_coord_t y_offset);
+static void update_digit_image(lv_obj_t *img_obj, int digit);
 static void build_l2_time_detail_page(void);
+static int screen_ui_update_l2_digital_clock(void);
+
 static void build_l2_media_control_page(void);
 static void build_l2_web_control_page(void);
 static void build_l2_shortcut_control_page(void);
@@ -307,6 +329,9 @@ static void safe_cleanup_ui_objects(void)
     memset(&g_ui_mgr.handles.group2_cpu_gpu, 0, sizeof(g_ui_mgr.handles.group2_cpu_gpu));
     memset(&g_ui_mgr.handles.group2_memory, 0, sizeof(g_ui_mgr.handles.group2_memory));
     memset(&g_ui_mgr.handles.group2_network, 0, sizeof(g_ui_mgr.handles.group2_network));
+    
+    // 清空L2数字时钟句柄
+    memset(&g_ui_mgr.handles.l2_digital_clock, 0, sizeof(g_ui_mgr.handles.l2_digital_clock));
 
     lv_timer_handler(); /* 处理清理操作 */
     rt_kprintf("[UIManager] Safe UI cleanup completed\n");
@@ -652,75 +677,214 @@ static void build_right_shortcut_panel(lv_obj_t *parent)
 }
 
 /*********************
- *   L2 UI BUILD
+ *   L2 DIGITAL CLOCK
  *********************/
 
 /**
- * 构建时间详情L2页面
+ * 根据数字值获取对应的图片资源
+ * @param digit 数字值（0-9）
+ * @return 对应的图片描述符指针，无效输入返回&t0
+ */
+static const lv_image_dsc_t* get_digit_image(int digit)
+{
+    if (digit >= 0 && digit <= 9) {
+        return digit_images[digit];
+    }
+    return &t0; // 默认返回数字0
+}
+
+/**
+ * 创建单个数字图片对象
+ * @param parent 父容器
+ * @param digit 要显示的数字（0-9）
+ * @param x_offset X轴偏移量
+ * @param y_offset Y轴偏移量
+ * @return 创建的图片对象指针
+ */
+static lv_obj_t* create_digit_image(lv_obj_t *parent, int digit, lv_coord_t x_offset, lv_coord_t y_offset)
+{
+    if (!parent) {
+        return NULL;
+    }
+    
+    lv_obj_t *img = lv_img_create(parent);
+    if (!img) {
+        rt_kprintf("[UIManager] Failed to create digit image\n");
+        return NULL;
+    }
+    
+    // 设置图片资源
+    lv_img_set_src(img, get_digit_image(digit));
+    
+    /* 极致优化1: 最大化图片容器尺寸 - 占用几乎全部显示区域 */
+    lv_coord_t img_width = (lv_coord_t)(SCREEN_WIDTH * 0.5f);    // 64像素，占满一半板块
+    lv_coord_t img_height = (lv_coord_t)(SCREEN_HEIGHT * 1.0f);  // 128像素，占满整个高度
+    lv_obj_set_size(img, img_width, img_height);
+    
+    // 设置位置 - 无边距，完全贴边
+    lv_obj_set_pos(img, x_offset, y_offset);
+    
+    /* 极致优化2: 激进缩放 - 在原有基础上再放大50% */
+    float max_scale = g_ui_mgr.scale_factor * 1.5f;  // 激进放大50%
+    
+    // 扩大缩放范围限制
+    if (max_scale < 0.8f) max_scale = 0.8f;
+    if (max_scale > 4.0f) max_scale = 4.0f;  // 允许更大的缩放
+    
+    lv_img_set_zoom(img, (int)(LV_IMG_ZOOM_NONE * max_scale));
+    
+    /* 极致优化3: 最佳显示效果设置 */
+    lv_img_set_antialias(img, true);                    // 抗锯齿
+    lv_img_set_pivot(img, img_width/2, img_height/2);   // 居中缩放点
+    
+    // 移除所有内边距和边框
+    lv_obj_set_style_pad_all(img, 0, 0);
+    lv_obj_set_style_border_width(img, 0, 0);
+    lv_obj_set_style_outline_width(img, 0, 0);
+    
+    rt_kprintf("[UIManager] Created MAXIMIZED digit %d: size=%dx%d, scale=%.2f\n", 
+              digit, img_width, img_height, max_scale);
+    
+    return img;
+}
+
+/**
+ * 更新单个数字图片显示
+ * @param img_obj 图片对象
+ * @param digit 新的数字值（0-9）
+ */
+static void update_digit_image(lv_obj_t *img_obj, int digit)
+{
+    if (!img_obj || !lv_obj_is_valid(img_obj)) {
+        return;
+    }
+    
+    lv_img_set_src(img_obj, get_digit_image(digit));
+}
+
+/**
+ * 构建L2数字时钟页面 - 纯图片数字时钟显示
  */
 static void build_l2_time_detail_page(void)
 {
-    rt_kprintf("[UIManager] Building L2 Time Detail page\n");
+    rt_kprintf("[UIManager] Building MAXIMIZED L2 Digital Clock (extreme optimization)\n");
     
-    if (!g_ui_mgr.handles.left_panel || !g_ui_mgr.handles.middle_panel || !g_ui_mgr.handles.right_panel) return;
+    if (!g_ui_mgr.handles.left_panel || !g_ui_mgr.handles.middle_panel || !g_ui_mgr.handles.right_panel) {
+        rt_kprintf("[UIManager] Panel objects not available\n");
+        return;
+    }
     
-    /* 左屏：板块1 - 处于子页面提示 */
-    lv_obj_t *left_title = lv_label_create(g_ui_mgr.handles.left_panel);
-    lv_label_set_text(left_title, "板块1");
-    lv_obj_add_style(left_title, &g_ui_mgr.handles.style_large, 0);
-    lv_obj_set_style_text_color(left_title, lv_color_make(100, 200, 255), 0);
-    lv_obj_align(left_title, LV_ALIGN_TOP_MID, 0, 10);
+    // 获取当前时间
+    time_t now = time(NULL);
+    struct tm *tm_info = localtime(&now);
     
-    lv_obj_t *left_status = lv_label_create(g_ui_mgr.handles.left_panel);
-    lv_label_set_text(left_status, "处于子页面");
-    lv_obj_add_style(left_status, &g_ui_mgr.handles.style_xlarge, 0);
-    lv_obj_set_style_text_color(left_status, lv_color_white(), 0);
-    lv_obj_align(left_status, LV_ALIGN_CENTER, 0, -10);
+    int hour = tm_info ? tm_info->tm_hour : 0;
+    int min = tm_info ? tm_info->tm_min : 0;
+    int sec = tm_info ? tm_info->tm_sec : 0;
     
-    lv_obj_t *left_hint = lv_label_create(g_ui_mgr.handles.left_panel);
-    lv_label_set_text(left_hint, "时间详情扩展");
-    lv_obj_add_style(left_hint, &g_ui_mgr.handles.style_medium, 0);
-    lv_obj_set_style_text_color(left_hint, lv_color_make(200, 200, 200), 0);
-    lv_obj_align(left_hint, LV_ALIGN_BOTTOM_MID, 0, -10);
+    /* 极致优化：零间距布局 - 数字完全贴边显示 */
+    lv_coord_t no_spacing = 0;        // 完全无间距
+    lv_coord_t no_offset = 0;         // 完全无偏移
     
-    /* 中屏：板块2 - 父页面信息 */
-    lv_obj_t *middle_title = lv_label_create(g_ui_mgr.handles.middle_panel);
-    lv_label_set_text(middle_title, "板块2");
-    lv_obj_add_style(middle_title, &g_ui_mgr.handles.style_large, 0);
-    lv_obj_set_style_text_color(middle_title, lv_color_make(255, 165, 0), 0);
-    lv_obj_align(middle_title, LV_ALIGN_TOP_MID, 0, 10);
+    // === 左板块：小时显示 - 完全占满 ===
+    g_ui_mgr.handles.l2_digital_clock.hour_tens = create_digit_image(
+        g_ui_mgr.handles.left_panel, 
+        hour / 10,
+        no_spacing,                   // X偏移：完全贴左边
+        no_offset                     // Y偏移：完全贴顶部
+    );
     
-    lv_obj_t *middle_parent = lv_label_create(g_ui_mgr.handles.middle_panel);
-    lv_label_set_text(middle_parent, "父页面为");
-    lv_obj_add_style(middle_parent, &g_ui_mgr.handles.style_medium, 0);
-    lv_obj_set_style_text_color(middle_parent, lv_color_make(200, 200, 200), 0);
-    lv_obj_align(middle_parent, LV_ALIGN_CENTER, 0, -20);
+    g_ui_mgr.handles.l2_digital_clock.hour_units = create_digit_image(
+        g_ui_mgr.handles.left_panel,
+        hour % 10,
+        SCREEN_WIDTH/2,              // X偏移：右半部分，无间距
+        no_offset                    // Y偏移：完全贴顶部
+    );
     
-    lv_obj_t *middle_desc = lv_label_create(g_ui_mgr.handles.middle_panel);
-    lv_label_set_text(middle_desc, "时间日期\n显示板块");
-    lv_obj_add_style(middle_desc, &g_ui_mgr.handles.style_large, 0);
-    lv_obj_set_style_text_color(middle_desc, lv_color_white(), 0);
-    lv_obj_align(middle_desc, LV_ALIGN_CENTER, 0, 15);
+    // === 中板块：分钟显示 - 完全占满 ===
+    g_ui_mgr.handles.l2_digital_clock.min_tens = create_digit_image(
+        g_ui_mgr.handles.middle_panel,
+        min / 10,
+        no_spacing,                  // X偏移：完全贴左边
+        no_offset                    // Y偏移：完全贴顶部
+    );
     
-    /* 右屏：板块3 - 未开发提示 */
-    lv_obj_t *right_title = lv_label_create(g_ui_mgr.handles.right_panel);
-    lv_label_set_text(right_title, "板块3");
-    lv_obj_add_style(right_title, &g_ui_mgr.handles.style_large, 0);
-    lv_obj_set_style_text_color(right_title, lv_color_make(255, 100, 100), 0);
-    lv_obj_align(right_title, LV_ALIGN_TOP_MID, 0, 10);
+    g_ui_mgr.handles.l2_digital_clock.min_units = create_digit_image(
+        g_ui_mgr.handles.middle_panel,
+        min % 10,
+        SCREEN_WIDTH/2,              // X偏移：右半部分，无间距
+        no_offset                    // Y偏移：完全贴顶部
+    );
     
-    lv_obj_t *right_status = lv_label_create(g_ui_mgr.handles.right_panel);
-    lv_label_set_text(right_status, "未开发");
-    lv_obj_add_style(right_status, &g_ui_mgr.handles.style_xlarge, 0);
-    lv_obj_set_style_text_color(right_status, lv_color_make(150, 150, 150), 0);
-    lv_obj_align(right_status, LV_ALIGN_CENTER, 0, 0);
+    // === 右板块：秒钟显示 - 完全占满 ===
+    g_ui_mgr.handles.l2_digital_clock.sec_tens = create_digit_image(
+        g_ui_mgr.handles.right_panel,
+        sec / 10,
+        no_spacing,                  // X偏移：完全贴左边
+        no_offset                    // Y偏移：完全贴顶部
+    );
     
-    lv_obj_t *right_hint = lv_label_create(g_ui_mgr.handles.right_panel);
-    lv_label_set_text(right_hint, "敬请期待");
-    lv_obj_add_style(right_hint, &g_ui_mgr.handles.style_medium, 0);
-    lv_obj_set_style_text_color(right_hint, lv_color_make(100, 100, 100), 0);
-    lv_obj_align(right_hint, LV_ALIGN_BOTTOM_MID, 0, -10);
+    g_ui_mgr.handles.l2_digital_clock.sec_units = create_digit_image(
+        g_ui_mgr.handles.right_panel,
+        sec % 10,
+        SCREEN_WIDTH/2,              // X偏移：右半部分，无间距
+        no_offset                    // Y偏移：完全贴顶部
+    );
 }
+
+
+/**
+ * 更新L2数字时钟显示 - 修复版本，添加时间变量声明
+ */
+static int screen_ui_update_l2_digital_clock(void)
+{
+    // 检查数字时钟UI对象是否存在，如果不存在说明不在时间详情L2页面
+    if (!g_ui_mgr.handles.l2_digital_clock.hour_tens || 
+        !lv_obj_is_valid(g_ui_mgr.handles.l2_digital_clock.hour_tens)) {
+        return 0; // 不是时间详情页面，不更新数字时钟
+    }
+    
+    // 获取当前时间 - 添加这部分缺失的代码
+    time_t now = time(NULL);
+    if (now == (time_t)-1) {
+        return -1; // 时间获取失败
+    }
+    
+    struct tm *tm_info = localtime(&now);
+    if (!tm_info) {
+        return -1; // 时间转换失败
+    }
+    
+    // 提取小时、分钟、秒钟
+    int hour = tm_info->tm_hour;
+    int min = tm_info->tm_min;
+    int sec = tm_info->tm_sec;
+    
+    // 更新小时显示
+    update_digit_image(g_ui_mgr.handles.l2_digital_clock.hour_tens, hour / 10);
+    update_digit_image(g_ui_mgr.handles.l2_digital_clock.hour_units, hour % 10);
+    
+    // 更新分钟显示
+    update_digit_image(g_ui_mgr.handles.l2_digital_clock.min_tens, min / 10);
+    update_digit_image(g_ui_mgr.handles.l2_digital_clock.min_units, min % 10);
+    
+    // 更新秒钟显示 - 关键：确保秒钟能实时更新
+    update_digit_image(g_ui_mgr.handles.l2_digital_clock.sec_tens, sec / 10);
+    update_digit_image(g_ui_mgr.handles.l2_digital_clock.sec_units, sec % 10);
+    
+    // 添加调试日志，确认更新正在进行
+    static int last_sec = -1;
+    if (sec != last_sec) {
+        rt_kprintf("[UIManager] Digital clock updated: %02d:%02d:%02d\n", hour, min, sec);
+        last_sec = sec;
+    }
+    
+    return 0;
+}
+
+/*********************
+ *   OTHER L2 UI BUILD
+ *********************/
 
 /**
  * 构建媒体控制L2页面
@@ -1058,8 +1222,10 @@ int screen_ui_build_l2_time(void)
         return -RT_ERROR;
     }
 
+    rt_kprintf("[UIManager] Building L2 Digital Time Display\n");
+    
     safe_cleanup_ui_objects();
-    build_l2_time_detail_page();
+    build_l2_time_detail_page();  // 使用新的数字时钟页面
     
     g_ui_mgr.current_level = SCREEN_LEVEL_2;
     
@@ -1067,6 +1233,7 @@ int screen_ui_build_l2_time(void)
     screen_context_activate_for_level2(SCREEN_L2_TIME_GROUP);
     
     lv_obj_invalidate(lv_scr_act());
+    rt_kprintf("[UIManager] L2 Digital Time Display built successfully\n");
     return 0;
 }
 
@@ -1126,6 +1293,8 @@ int screen_ui_build_l2_shortcut(void)
 
 int screen_ui_switch_to_group(screen_group_t target_group)
 {
+        rt_kprintf("[UIManager] DEBUG: Switching to group %d (MAX=%d)\n", 
+               target_group, SCREEN_GROUP_MAX);
     if (!g_ui_mgr.initialized || target_group >= SCREEN_GROUP_MAX) {
         return -RT_EINVAL;
     }
@@ -1137,6 +1306,8 @@ int screen_ui_switch_to_group(screen_group_t target_group)
             return screen_ui_build_group2();
         case SCREEN_GROUP_3:
             return screen_ui_build_group3();
+        case SCREEN_GROUP_4:
+            return screen_ui_build_group4();
         default:
             rt_kprintf("[UIManager] Invalid target group: %d\n", target_group);
             return -RT_EINVAL;
@@ -1158,6 +1329,12 @@ int screen_ui_switch_to_l2(screen_l2_group_t l2_group, screen_l2_page_t l2_page)
             return screen_ui_build_l2_web();
         case SCREEN_L2_SHORTCUT_GROUP:
             return screen_ui_build_l2_shortcut();
+        case SCREEN_L2_MUYU_GROUP:
+            return screen_ui_build_l2_muyu();
+        case SCREEN_L2_TOMATO_GROUP:
+            return screen_ui_build_l2_tomato();
+        case SCREEN_L2_GALLERY_GROUP:
+            return screen_ui_build_l2_gallery();
         default:
             rt_kprintf("[UIManager] Invalid L2 group: %d\n", l2_group);
             return -RT_EINVAL;
@@ -1179,10 +1356,23 @@ int screen_ui_return_to_l1(screen_group_t l1_group)
 
 int screen_ui_update_time_display(void)
 {
-    if (!g_ui_mgr.initialized || g_ui_mgr.current_group != SCREEN_GROUP_1) {
+    if (!g_ui_mgr.initialized) {
         return 0;
     }
-
+    
+    // 优先检查是否在L2时间详情页面
+    // 简化检查：通过UI对象是否存在来判断
+    if (g_ui_mgr.handles.l2_digital_clock.hour_tens && 
+        lv_obj_is_valid(g_ui_mgr.handles.l2_digital_clock.hour_tens)) {
+        // 数字时钟UI存在，更新数字时钟
+        return screen_ui_update_l2_digital_clock();
+    }
+    
+    // L1层级的常规时间显示更新
+    if (g_ui_mgr.current_group != SCREEN_GROUP_1) {
+        return 0;
+    }
+    
     time_t now = time(NULL);
     if (now == (time_t)-1) return -1;
     
@@ -1427,3 +1617,455 @@ bool screen_ui_is_initialized(void)
 {
     return g_ui_mgr.initialized;
 }
+
+
+/* 需要添加到screen_ui_manager.c文件中的新代码部分 */
+
+/* 木鱼图片资源声明 - 需要添加到文件顶部 */
+extern const lv_image_dsc_t muyu;  // 木鱼图片资源
+
+/*********************
+ *   GROUP 4 UI BUILD - 新增实用工具页面
+ *********************/
+
+/**
+ * 创建缩小的木鱼图片用于入口显示
+ */
+static lv_obj_t* create_muyu_entrance_icon(lv_obj_t *parent)
+{
+    lv_obj_t *img = lv_img_create(parent);
+    if (!img) {
+        rt_kprintf("[UIManager] Failed to create muyu entrance icon\n");
+        return NULL;
+    }
+    
+    // 设置木鱼图片资源
+    lv_image_set_src(img, get_muyu_image());
+    
+    /* 入口图标使用较小尺寸 - 缩小50% */
+    lv_coord_t icon_size = (lv_coord_t)(SCREEN_WIDTH * 0.25f);  // 从50%减小到25%
+    lv_obj_set_size(img, icon_size, icon_size);
+    
+    // 适中的缩放比例 - 缩小50%
+    float scale = g_ui_mgr.scale_factor * 0.4f;  // 从0.8f减小到0.4f
+    if (scale < 0.3f) scale = 0.3f;
+    if (scale > 1.0f) scale = 1.0f;  // 最大缩放限制
+    
+    lv_img_set_zoom(img, (int)(LV_IMG_ZOOM_NONE * scale));
+    lv_img_set_antialias(img, true);
+    
+    // 移除所有边距和边框
+    lv_obj_set_style_pad_all(img, 0, 0);
+    lv_obj_set_style_border_width(img, 0, 0);
+    
+    rt_kprintf("[UIManager] Created muyu entrance icon: size=%dx%d, scale=%.2f (reduced 50%%)\n", 
+              icon_size, icon_size, scale);
+    
+    return img;
+}
+
+/**
+ * 构建左屏 - 赛博木鱼面板
+ */
+static void build_left_muyu_panel(lv_obj_t *parent)
+{
+    /* 木鱼图片入口 - 上半部分居中 */
+    g_ui_mgr.handles.group4_muyu.muyu_icon = create_muyu_entrance_icon(parent);
+    if (g_ui_mgr.handles.group4_muyu.muyu_icon) {
+        lv_obj_align(g_ui_mgr.handles.group4_muyu.muyu_icon, LV_ALIGN_CENTER, 0, -20);
+    }
+    
+    /* 赛博木鱼文字 - 下半部分居中 */
+    g_ui_mgr.handles.group4_muyu.muyu_title = lv_label_create(parent);
+    lv_label_set_text(g_ui_mgr.handles.group4_muyu.muyu_title, "赛博木鱼");
+    lv_obj_add_style(g_ui_mgr.handles.group4_muyu.muyu_title, &g_ui_mgr.handles.style_medium, 0);
+    lv_obj_set_style_text_color(g_ui_mgr.handles.group4_muyu.muyu_title, lv_color_white(), 0);
+    lv_obj_align(g_ui_mgr.handles.group4_muyu.muyu_title, LV_ALIGN_CENTER, 0, 25);
+    
+    /* 功能提示 - 底部小字 */
+    g_ui_mgr.handles.group4_muyu.muyu_hint = lv_label_create(parent);
+    lv_label_set_text(g_ui_mgr.handles.group4_muyu.muyu_hint, "积累·功德");
+    lv_obj_add_style(g_ui_mgr.handles.group4_muyu.muyu_hint, &g_ui_mgr.handles.style_small, 0);
+    lv_obj_set_style_text_color(g_ui_mgr.handles.group4_muyu.muyu_hint, lv_color_make(200, 200, 200), 0);
+    lv_obj_align(g_ui_mgr.handles.group4_muyu.muyu_hint, LV_ALIGN_BOTTOM_MID, 0, -5);
+}
+
+/**
+ * 构建中屏 - 番茄钟面板
+ */
+static void build_middle_tomato_panel(lv_obj_t *parent)
+{
+    /* 番茄emoji - 上半部分居中 */
+    g_ui_mgr.handles.group4_tomato.tomato_icon = lv_label_create(parent);
+    lv_label_set_text(g_ui_mgr.handles.group4_tomato.tomato_icon, "🍅");
+    lv_obj_add_style(g_ui_mgr.handles.group4_tomato.tomato_icon, &g_ui_mgr.handles.style_xlarge, 0);
+    lv_obj_set_style_text_color(g_ui_mgr.handles.group4_tomato.tomato_icon, lv_color_make(255, 99, 71), 0);
+    lv_obj_align(g_ui_mgr.handles.group4_tomato.tomato_icon, LV_ALIGN_CENTER, 0, -25);
+    
+    /* 番茄钟文字 - 下半部分居中 */
+    g_ui_mgr.handles.group4_tomato.tomato_title = lv_label_create(parent);
+    lv_label_set_text(g_ui_mgr.handles.group4_tomato.tomato_title, "番茄钟");
+    lv_obj_add_style(g_ui_mgr.handles.group4_tomato.tomato_title, &g_ui_mgr.handles.style_xlarge, 0);
+    lv_obj_set_style_text_color(g_ui_mgr.handles.group4_tomato.tomato_title, lv_color_white(), 0);
+    lv_obj_align(g_ui_mgr.handles.group4_tomato.tomato_title, LV_ALIGN_CENTER, 0, 15);
+    
+    /* 功能提示 - 底部小字 */
+    g_ui_mgr.handles.group4_tomato.tomato_hint = lv_label_create(parent);
+    lv_label_set_text(g_ui_mgr.handles.group4_tomato.tomato_hint, "专注·高效");
+    lv_obj_add_style(g_ui_mgr.handles.group4_tomato.tomato_hint, &g_ui_mgr.handles.style_small, 0);
+    lv_obj_set_style_text_color(g_ui_mgr.handles.group4_tomato.tomato_hint, lv_color_make(200, 200, 200), 0);
+    lv_obj_align(g_ui_mgr.handles.group4_tomato.tomato_hint, LV_ALIGN_BOTTOM_MID, 0, -5);
+}
+
+/**
+ * 构建右屏 - 全屏图片面板
+ */
+static void build_right_gallery_panel(lv_obj_t *parent)
+{
+    /* 图片emoji - 上半部分居中 */
+    g_ui_mgr.handles.group4_gallery.gallery_icon = lv_label_create(parent);
+    lv_label_set_text(g_ui_mgr.handles.group4_gallery.gallery_icon, "🖼️");
+    lv_obj_add_style(g_ui_mgr.handles.group4_gallery.gallery_icon, &g_ui_mgr.handles.style_xlarge, 0);
+    lv_obj_set_style_text_color(g_ui_mgr.handles.group4_gallery.gallery_icon, lv_color_make(144, 238, 144), 0);
+    lv_obj_align(g_ui_mgr.handles.group4_gallery.gallery_icon, LV_ALIGN_CENTER, 0, -25);
+    
+    /* 全屏图片文字 - 下半部分居中 */
+    g_ui_mgr.handles.group4_gallery.gallery_title = lv_label_create(parent);
+    lv_label_set_text(g_ui_mgr.handles.group4_gallery.gallery_title, "全屏图片");
+    lv_obj_add_style(g_ui_mgr.handles.group4_gallery.gallery_title, &g_ui_mgr.handles.style_xlarge, 0);
+    lv_obj_set_style_text_color(g_ui_mgr.handles.group4_gallery.gallery_title, lv_color_white(), 0);
+    lv_obj_align(g_ui_mgr.handles.group4_gallery.gallery_title, LV_ALIGN_CENTER, 0, 15);
+    
+    /* 功能提示 - 底部小字 */
+    g_ui_mgr.handles.group4_gallery.gallery_hint = lv_label_create(parent);
+    lv_label_set_text(g_ui_mgr.handles.group4_gallery.gallery_hint, "欣赏·展示");
+    lv_obj_add_style(g_ui_mgr.handles.group4_gallery.gallery_hint, &g_ui_mgr.handles.style_small, 0);
+    lv_obj_set_style_text_color(g_ui_mgr.handles.group4_gallery.gallery_hint, lv_color_make(200, 200, 200), 0);
+    lv_obj_align(g_ui_mgr.handles.group4_gallery.gallery_hint, LV_ALIGN_BOTTOM_MID, 0, -5);
+}
+
+/**
+ * 获取木鱼图片资源
+ */
+static const lv_image_dsc_t* get_muyu_image(void)
+{
+    return &muyu;
+}
+
+
+
+/**
+ * 创建L2木鱼主界面的展示图片（非点击）
+ */
+static lv_obj_t* create_muyu_display_image(lv_obj_t *parent)
+{
+    lv_obj_t *img = lv_img_create(parent);
+    if (!img) {
+        rt_kprintf("[UIManager] Failed to create muyu display image\n");
+        return NULL;
+    }
+    
+    // 设置木鱼图片资源
+    lv_img_set_src(img, get_muyu_image());
+    
+    /* 复用入口图标的处理方式 - 合适的尺寸和缩放 */
+    lv_coord_t icon_size = (lv_coord_t)(SCREEN_WIDTH * 0.25f);  // 使用和入口一样的25%
+    lv_obj_set_size(img, icon_size, icon_size);
+    
+    // 设置位置 - 居中显示
+    lv_obj_align(img, LV_ALIGN_CENTER, 0, 0);
+    
+    // 适中的缩放比例 - 和入口图标一样
+    float scale = g_ui_mgr.scale_factor * 0.4f;  // 使用和入口一样的0.4f
+    if (scale < 0.3f) scale = 0.3f;
+    if (scale > 1.0f) scale = 1.0f;  // 最大缩放限制
+    
+    lv_img_set_zoom(img, (int)(LV_IMG_ZOOM_NONE * scale));
+    lv_img_set_antialias(img, true);
+    
+    // 移除所有边距和边框
+    lv_obj_set_style_pad_all(img, 0, 0);
+    lv_obj_set_style_border_width(img, 0, 0);
+    
+    // 设置为非点击 - 纯展示用途
+    lv_obj_clear_flag(img, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_bg_opa(img, LV_OPA_TRANSP, 0);  // 透明背景
+    
+    rt_kprintf("[UIManager] Created muyu display image using entrance icon style: size=%dx%d, scale=%.2f\n", 
+              icon_size, icon_size, scale);
+    
+    return img;
+}
+
+/**
+ * 构建L2赛博木鱼主界面
+ */
+static void build_l2_muyu_main_page(void)
+{
+    rt_kprintf("[UIManager] Building L2 Cyber Muyu Main Page (key-based interaction)\n");
+    
+    if (!g_ui_mgr.handles.left_panel || !g_ui_mgr.handles.middle_panel || !g_ui_mgr.handles.right_panel) {
+        rt_kprintf("[UIManager] Panel objects not available\n");
+        return;
+    }
+    
+    // === 左板块：木鱼图片（纯展示，KEY1触发） ===
+    g_ui_mgr.handles.l2_muyu_main.muyu_image = create_muyu_display_image(g_ui_mgr.handles.left_panel);
+    
+    // 添加按键提示文字
+    lv_obj_t *key_hint = lv_label_create(g_ui_mgr.handles.left_panel);
+    lv_label_set_text(key_hint, "按键1敲击");
+    lv_obj_add_style(key_hint, &g_ui_mgr.handles.style_small, 0);
+    lv_obj_set_style_text_color(key_hint, lv_color_make(255, 215, 0), 0);
+    lv_obj_align(key_hint, LV_ALIGN_BOTTOM_MID, 0, -2);
+    
+    // === 中板块：计数器显示 ===
+    // 当前计数标题
+    lv_obj_t *counter_title = lv_label_create(g_ui_mgr.handles.middle_panel);
+    lv_label_set_text(counter_title, "功德");
+    lv_obj_add_style(counter_title, &g_ui_mgr.handles.style_large, 0);
+    lv_obj_set_style_text_color(counter_title, lv_color_make(255, 215, 0), 0);
+    lv_obj_align(counter_title, LV_ALIGN_TOP_MID, 0, 15);
+    
+    // 当前计数显示
+    g_ui_mgr.handles.l2_muyu_main.counter_label = lv_label_create(g_ui_mgr.handles.middle_panel);
+    lv_label_set_text(g_ui_mgr.handles.l2_muyu_main.counter_label, "0");
+    lv_obj_add_style(g_ui_mgr.handles.l2_muyu_main.counter_label, &g_ui_mgr.handles.style_xxlarge, 0);
+    lv_obj_set_style_text_color(g_ui_mgr.handles.l2_muyu_main.counter_label, lv_color_make(255, 215, 0), 0);
+    lv_obj_align(g_ui_mgr.handles.l2_muyu_main.counter_label, LV_ALIGN_CENTER, 0, -10);
+    
+    // 当前会话提示
+    lv_obj_t *session_hint = lv_label_create(g_ui_mgr.handles.middle_panel);
+    lv_label_set_text(session_hint, "本次");
+    lv_obj_add_style(session_hint, &g_ui_mgr.handles.style_small, 0);
+    lv_obj_set_style_text_color(session_hint, lv_color_make(180, 180, 180), 0);
+    lv_obj_align(session_hint, LV_ALIGN_BOTTOM_MID, 0, -10);
+    
+    // === 右板块：总计数和功德信息 ===
+    // 总计数标题
+    lv_obj_t *total_title = lv_label_create(g_ui_mgr.handles.right_panel);
+    lv_label_set_text(total_title, "总计");
+    lv_obj_add_style(total_title, &g_ui_mgr.handles.style_medium, 0);
+    lv_obj_set_style_text_color(total_title, lv_color_make(100, 200, 255), 0);
+    lv_obj_align(total_title, LV_ALIGN_TOP_MID, 0, 10);
+    
+    // 总计数显示
+    g_ui_mgr.handles.l2_muyu_main.total_label = lv_label_create(g_ui_mgr.handles.right_panel);
+    lv_label_set_text(g_ui_mgr.handles.l2_muyu_main.total_label, "0");
+    lv_obj_add_style(g_ui_mgr.handles.l2_muyu_main.total_label, &g_ui_mgr.handles.style_large, 0);
+    lv_obj_set_style_text_color(g_ui_mgr.handles.l2_muyu_main.total_label, lv_color_white(), 0);
+    lv_obj_align_to(g_ui_mgr.handles.l2_muyu_main.total_label, total_title, LV_ALIGN_OUT_BOTTOM_MID, 0, 5);
+    
+    // 功德等级显示
+    g_ui_mgr.handles.l2_muyu_main.merit_label = lv_label_create(g_ui_mgr.handles.right_panel);
+    lv_label_set_text(g_ui_mgr.handles.l2_muyu_main.merit_label, "初心功德");
+    lv_obj_add_style(g_ui_mgr.handles.l2_muyu_main.merit_label, &g_ui_mgr.handles.style_medium, 0);
+    lv_obj_set_style_text_color(g_ui_mgr.handles.l2_muyu_main.merit_label, lv_color_make(144, 238, 144), 0);
+    lv_obj_align(g_ui_mgr.handles.l2_muyu_main.merit_label, LV_ALIGN_CENTER, 0, 10);
+    
+    // 重置提示
+    g_ui_mgr.handles.l2_muyu_main.reset_hint = lv_label_create(g_ui_mgr.handles.right_panel);
+    lv_label_set_text(g_ui_mgr.handles.l2_muyu_main.reset_hint, "按键2重置");
+    lv_obj_add_style(g_ui_mgr.handles.l2_muyu_main.reset_hint, &g_ui_mgr.handles.style_small, 0);
+    lv_obj_set_style_text_color(g_ui_mgr.handles.l2_muyu_main.reset_hint, lv_color_make(180, 180, 180), 0);
+    lv_obj_align(g_ui_mgr.handles.l2_muyu_main.reset_hint, LV_ALIGN_BOTTOM_MID, 0, -5);
+    
+    // 初始化木鱼数据
+    memset(&g_ui_mgr.muyu_data, 0, sizeof(muyu_data_t));
+    g_ui_mgr.muyu_data.sound_enabled = true;
+    g_ui_mgr.muyu_data.auto_save = true;
+    g_ui_mgr.muyu_data.tap_effect_level = 1;
+}
+
+/* 需要添加到公共API部分的函数 */
+
+int screen_ui_build_group4(void)
+{
+    if (!g_ui_mgr.initialized) {
+        return -RT_ERROR;
+    }
+
+    rt_kprintf("[UIManager] Building Group 4 UI (Utility Tools)\n");
+    
+    safe_cleanup_ui_objects();
+    
+    build_left_muyu_panel(g_ui_mgr.handles.left_panel);
+    build_middle_tomato_panel(g_ui_mgr.handles.middle_panel);
+    build_right_gallery_panel(g_ui_mgr.handles.right_panel);
+    
+    g_ui_mgr.current_group = SCREEN_GROUP_4;
+    g_ui_mgr.current_level = SCREEN_LEVEL_1;
+    
+    /* 激活按键上下文 */
+    screen_context_activate_for_group(SCREEN_GROUP_4);
+    
+    lv_obj_invalidate(lv_scr_act());
+    rt_kprintf("[UIManager] Group 4 UI built successfully\n");
+    
+    return 0;
+}
+
+int screen_ui_build_l2_muyu(void)
+{
+    if (!g_ui_mgr.initialized) {
+        return -RT_ERROR;
+    }
+
+    rt_kprintf("[UIManager] Building L2 Cyber Muyu Main Page\n");
+    
+    safe_cleanup_ui_objects();
+    build_l2_muyu_main_page();
+    
+    g_ui_mgr.current_level = SCREEN_LEVEL_2;
+    
+    /* 激活L2按键上下文 */
+    screen_context_activate_for_level2(SCREEN_L2_MUYU_GROUP);
+    
+    lv_obj_invalidate(lv_scr_act());
+    rt_kprintf("[UIManager] L2 Cyber Muyu built successfully\n");
+    return 0;
+}
+
+int screen_ui_build_l2_tomato(void)
+{
+    if (!g_ui_mgr.initialized) {
+        return -RT_ERROR;
+    }
+
+    // 预留番茄钟实现
+    rt_kprintf("[UIManager] L2 Tomato Timer - Coming Soon\n");
+    
+    safe_cleanup_ui_objects();
+    
+    // 临时显示"开发中"界面
+    lv_obj_t *temp_label = lv_label_create(g_ui_mgr.handles.middle_panel);
+    lv_label_set_text(temp_label, "番茄钟\n开发中...");
+    lv_obj_add_style(temp_label, &g_ui_mgr.handles.style_xlarge, 0);
+    lv_obj_set_style_text_color(temp_label, lv_color_white(), 0);
+    lv_obj_align(temp_label, LV_ALIGN_CENTER, 0, 0);
+    
+    g_ui_mgr.current_level = SCREEN_LEVEL_2;
+    
+    lv_obj_invalidate(lv_scr_act());
+    return 0;
+}
+
+int screen_ui_build_l2_gallery(void)
+{
+    if (!g_ui_mgr.initialized) {
+        return -RT_ERROR;
+    }
+
+    // 预留全屏图片实现
+    rt_kprintf("[UIManager] L2 Gallery View - Coming Soon\n");
+    
+    safe_cleanup_ui_objects();
+    
+    // 临时显示"开发中"界面
+    lv_obj_t *temp_label = lv_label_create(g_ui_mgr.handles.middle_panel);
+    lv_label_set_text(temp_label, "全屏图片\n开发中...");
+    lv_obj_add_style(temp_label, &g_ui_mgr.handles.style_xlarge, 0);
+    lv_obj_set_style_text_color(temp_label, lv_color_white(), 0);
+    lv_obj_align(temp_label, LV_ALIGN_CENTER, 0, 0);
+    
+    g_ui_mgr.current_level = SCREEN_LEVEL_2;
+    
+    lv_obj_invalidate(lv_scr_act());
+    return 0;
+}
+
+int screen_ui_update_muyu_display(void)
+{
+    if (!g_ui_mgr.initialized) {
+        return 0;
+    }
+    
+    // 检查是否在木鱼L2页面
+    if (!g_ui_mgr.handles.l2_muyu_main.counter_label || 
+        !lv_obj_is_valid(g_ui_mgr.handles.l2_muyu_main.counter_label)) {
+        return 0; // 不在木鱼页面，不更新
+    }
+    
+    // 更新当前计数显示
+    char counter_str[16];
+    rt_snprintf(counter_str, sizeof(counter_str), "%u", g_ui_mgr.muyu_data.tap_count);
+    lv_label_set_text(g_ui_mgr.handles.l2_muyu_main.counter_label, counter_str);
+    
+    // 更新总计数显示
+    if (g_ui_mgr.handles.l2_muyu_main.total_label && lv_obj_is_valid(g_ui_mgr.handles.l2_muyu_main.total_label)) {
+        char total_str[16];
+        rt_snprintf(total_str, sizeof(total_str), "%u", g_ui_mgr.muyu_data.total_taps);
+        lv_label_set_text(g_ui_mgr.handles.l2_muyu_main.total_label, total_str);
+    }
+    
+    // 更新功德等级显示
+    if (g_ui_mgr.handles.l2_muyu_main.merit_label && lv_obj_is_valid(g_ui_mgr.handles.l2_muyu_main.merit_label)) {
+        const char *merit_text;
+        if (g_ui_mgr.muyu_data.total_taps < 100) {
+            merit_text = "初心功德";
+        } else if (g_ui_mgr.muyu_data.total_taps < 1000) {
+            merit_text = "精进功德";
+        } else {
+            merit_text = "圆满功德";
+        }
+        lv_label_set_text(g_ui_mgr.handles.l2_muyu_main.merit_label, merit_text);
+    }
+    
+    return 0;
+}
+
+int screen_ui_muyu_tap_event(void)
+{
+    if (!g_ui_mgr.initialized) {
+        return -RT_ERROR;
+    }
+    
+    // 计数器+1
+    g_ui_mgr.muyu_data.tap_count++;
+    g_ui_mgr.muyu_data.total_taps++;
+    g_ui_mgr.muyu_data.session_taps++;
+    
+    // 更新最后敲击时间
+    time_t now = time(NULL);
+    if (now != (time_t)-1) {
+        struct tm *tm_info = localtime(&now);
+        if (tm_info) {
+            rt_snprintf(g_ui_mgr.muyu_data.last_tap_time, 
+                       sizeof(g_ui_mgr.muyu_data.last_tap_time),
+                       "%02d:%02d:%02d", 
+                       tm_info->tm_hour, tm_info->tm_min, tm_info->tm_sec);
+        }
+    }
+    
+    // 更新显示
+    screen_ui_update_muyu_display();
+    
+    rt_kprintf("[UIManager] Muyu tap event: count=%u, total=%u\n", 
+              g_ui_mgr.muyu_data.tap_count, g_ui_mgr.muyu_data.total_taps);
+    
+    return 0;
+}
+
+const muyu_data_t* screen_ui_get_muyu_data(void)
+{
+    return &g_ui_mgr.muyu_data;
+}
+
+int screen_ui_reset_muyu_counter(void)
+{
+    if (!g_ui_mgr.initialized) {
+        return -RT_ERROR;
+    }
+    
+    // 重置当前计数器，但保留总计数
+    g_ui_mgr.muyu_data.tap_count = 0;
+    
+    // 更新显示
+    screen_ui_update_muyu_display();
+    
+    rt_kprintf("[UIManager] Muyu counter reset. Total preserved: %u\n", 
+              g_ui_mgr.muyu_data.total_taps);
+    
+    return 0;
+}
+

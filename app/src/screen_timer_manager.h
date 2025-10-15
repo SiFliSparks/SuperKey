@@ -62,6 +62,14 @@ bool screen_timer_is_running(screen_timer_type_t type);
 uint32_t screen_timer_get_trigger_count(screen_timer_type_t type);
 rt_tick_t screen_timer_get_last_trigger_time(screen_timer_type_t type);
 int screen_timer_get_status_string(char *buffer, size_t buffer_size);
+/**
+ * @brief 启动L2层级专用定时器
+ * 
+ * 主要用于L2时间详情页面的数字时钟更新
+ * 
+ * @return 0成功，负数失败
+ */
+int screen_timer_start_l2_timers(void);
 
 #ifdef __cplusplus
 }

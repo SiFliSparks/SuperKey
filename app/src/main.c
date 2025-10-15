@@ -1,3 +1,5 @@
+// main.c - 修复编译错误版本
+
 #include "rtthread.h"
 #include "lvgl.h"
 #include "bf0_hal.h"
@@ -9,83 +11,46 @@
 #include "app_controller.h"
 #include "hid_device.h"
 #include "encoder_controller.h"
-#include "encoder_context.h"
-#include "led_controller.h"
 #include "key_manager.h"
 #include "sht30_controller.h"
 #include "data_manager.h" 
 #include "serial_data_handler.h"
-#include "light_effects.h"
+#include "drv_rgbled.h"
 #include <board.h>
 #include <stdlib.h>
+#include <string.h>  // 添加缺少的头文件
+#include "led_effects_manager.h"
+#include "screen_context.h"
+/* 系统线程优先级定义 */
+#define MAIN_THREAD_PRIORITY        20  // 主线程优先级最低
+#define EVENT_BUS_THREAD_PRIORITY   8   // 事件总线高优先级
+#define LED_THREAD_PRIORITY         12  // LED效果线程
+#define KEY_THREAD_PRIORITY         10  // 按键处理线程
+#define SERIAL_THREAD_PRIORITY      15  // 串口数据处理
+#define SCREEN_THREAD_PRIORITY      18  // 屏幕更新线程
 
-int main(void)
-{
-    rt_err_t ret = RT_EOK;
-    rt_uint32_t ms;
+/* 系统状态结构体 */
+typedef struct {
+    bool system_ready;
+    bool in_error_state;
+    uint32_t error_count;
+    rt_tick_t last_health_check;
+    rt_mutex_t system_lock;
+} system_state_t;
 
-    static rt_tick_t last_stats_report = 0;
-    static rt_tick_t last_memory_check = 0;
-    static rt_tick_t last_hid_check = 0;
-    static uint32_t memory_warning_count = 0;
-    
-    rt_kprintf("[1/10] Initializing display system...\n");
-    ret = littlevgl2rtt_init("lcd");
-    if (ret != RT_EOK) {
-        rt_kprintf("LVGL init failed: %d\n", ret);
-        event_bus_deinit();
-        return ret;
-    }
+static system_state_t g_system_state = {0};
 
-    lv_ex_data_pool_init();
-    
-    rt_kprintf("[2/10] Initializing LED controller...\n");
-    if (led_controller_init() != 0) {
-        rt_kprintf("LED controller init failed\n");
-    } else {
-        rt_kprintf("LED controller init success\n");
-        
-        // 初始化灯光效果模块
-        if (light_effects_init() != 0) {
-            rt_kprintf("Light effects module init failed\n");
-        } else {
-            rt_kprintf("Light effects module init success\n");
-        }
-    }
-    
-    rt_kprintf("[3/10] Initializing event bus...\n");
-    if (event_bus_init() != 0) {
-        rt_kprintf("Event bus init failed\n");
-        return -1;
-    }
-    
-    rt_kprintf("[4/10] Initializing data manager...\n");
-    if (data_manager_init() != 0) {
-        rt_kprintf("Data manager init failed\n");
-        event_bus_deinit();
-        return -1;
-    }
-    rt_kprintf("Data manager init success\n");
-    
-    rt_kprintf("[5/10] Initializing serial data handler...\n");
-    if (serial_data_handler_init() != RT_EOK) {
-        rt_kprintf("Serial data handler init failed\n");
-        data_manager_deinit();
-        event_bus_deinit();
-        return -1;
-    }
-    rt_kprintf("Serial data handler init success (uart1, 1000000 baud)\n");
-    
-    rt_kprintf("[6/10] Initializing HID system...\n");
-    if (app_controller_init() != 0) {
-        rt_kprintf("HID system init failed\n");
-        serial_data_handler_deinit();
-        data_manager_deinit();
-        event_bus_deinit();
-        return -1;
-    }
-    
-    rt_kprintf("[7/10] Initializing SHT30 sensor...\n");
+/* 前向声明 */
+static int system_init_stage(int stage, const char *stage_name, int (*init_func)(void));
+static void system_health_monitor(void);
+static void system_error_recovery(void);
+static int safe_component_init(const char *name, int (*init_func)(void));
+static void system_show_startup_progress(int stage, int total_stages, const char *message);
+
+/* 初始化函数包装器 */
+static int init_display_system(void) { return littlevgl2rtt_init("lcd"); }
+static int init_data_pool(void) { lv_ex_data_pool_init(); return 0; }
+static int init_sht30_sensor(void) {
     if (sht30_controller_init() == RT_EOK) {
         sht30_report_config_t config = {
             .enabled = false,
@@ -95,109 +60,334 @@ int main(void)
         };
         sht30_controller_config_report(&config);
         sht30_controller_start_continuous(5000);
-        rt_kprintf("SHT30 sensor init success\n");
-    } else {
-        rt_kprintf("SHT30 sensor init failed\n");
+        return 0;
     }
-
-    rt_kprintf("[8/10] Creating triple screen display...\n");
-    create_triple_screen_display();
+    return -1;
+}
+static int init_screen_system(void) { 
+    create_triple_screen_display(); 
     rt_thread_mdelay(500);
-    
-    rt_kprintf("[9/10] System startup complete, entering main loop...\n");
-    rt_kprintf("[10/10] Serial data format: sys_set <key> <value>\n");
-    rt_kprintf("        Supported keys: time, date, temp, weather_code, humidity, pressure, city_code\n");
-    rt_kprintf("                       stock_name, stock_price, stock_change\n");
-    rt_kprintf("                       cpu, cpu_temp, mem, gpu, gpu_temp, net_up, net_down\n");
-    
-    // === 选择你想要的呼吸灯效果 ===
-    
-    // 选项1：青色呼吸灯开机动画（执行1次，2秒周期）- 推荐
-    //light_effects_breathing_once(LIGHT_COLOR_CYAN, 2000, 200);
-    
-    // 选项2：蓝色呼吸灯（执行3次）
-     light_effects_breathing(LIGHT_COLOR_BLUE, 2000, 200, 1);
-    
-    // 选项3：白色慢速呼吸（执行1次，3秒周期）
-    // light_effects_breathing_once(LIGHT_COLOR_WHITE, 3000, 180);
-    
-    // 选项4：绿色快速呼吸（执行1次，1.5秒周期）
-    // light_effects_breathing_once(LIGHT_COLOR_GREEN, 1500, 220);
-    
-    // 选项5：红色警告呼吸（执行1次，1秒周期）
-    // light_effects_breathing_once(LIGHT_COLOR_RED, 1000, 255);
+    return 0; 
+}
 
-    while (1) {
-        uint32_t ms = lv_timer_handler();
-        rt_tick_t now = rt_tick_get();
-        
-        // 更新灯光效果
-        light_effects_update();
-        
-        screen_process_switch_request();        
-        
-        if ((now - last_stats_report) > rt_tick_from_millisecond(300000)) {
-            uint32_t published, processed, dropped, queue_size;
-            if (event_bus_get_stats(&published, &processed, &dropped, &queue_size) == 0) {
-                rt_kprintf("[Main] EventBus Stats - Published: %u, Processed: %u, Dropped: %u, Queue: %u\n",
-                          published, processed, dropped, queue_size);
-                
-                if (dropped > published / 10) {
-                    rt_kprintf("[Main] High event drop rate detected, cleaning queue\n");
-                    event_bus_cleanup();
-                }
-            }
-            
-            char data_status[256];
-            if (data_manager_get_data_status(data_status, sizeof(data_status)) == 0) {
-                rt_kprintf("[Main] Data Status: %s\n", data_status);
-            }
-            
-            last_stats_report = now;
-        }
-
-        if ((now - last_memory_check) > rt_tick_from_millisecond(60000)) {
-            rt_size_t total, used, max_used;
-            rt_memory_info(&total, &used, &max_used);
-            
-            float usage_percent = (float)used * 100 / total;
-            
-            if (usage_percent > 90) {
-                memory_warning_count++;
-                rt_kprintf("[Main] CRITICAL MEMORY: %d/%d bytes (%.1f%%) - Warning #%u\n", 
-                          used, total, usage_percent, memory_warning_count);
-                
-                data_manager_cleanup_expired_data();
-                event_bus_cleanup();
-            }
-            
-            last_memory_check = now;
-        }
-
-        if ((now - last_hid_check) > rt_tick_from_millisecond(20000)) {
-            if (hid_device_ready()) {
-                int sem_count = hid_get_semaphore_count();
-                if (sem_count > 1) {
-                    rt_kprintf("[Main] HID semaphore anomaly detected (%d), auto-fixing\n", sem_count);
-                    hid_reset_semaphore();
-                }
-            }
-            last_hid_check = now;
-        }
-        
-        screen_process_switch_request();
-        rt_thread_mdelay(ms);
+/* 安全的组件初始化包装器 */
+static int safe_component_init(const char *name, int (*init_func)(void))
+{
+    if (!init_func) {
+        rt_kprintf("[INIT] ERROR: NULL init function for %s\n", name);
+        return -RT_ERROR;
     }
     
-    // 清理资源
+    rt_kprintf("[INIT] Initializing %s...\n", name);
+    
+    int result = init_func();
+    
+    if (result == 0 || result == RT_EOK) {
+        rt_kprintf("[INIT] %s initialized successfully\n", name);
+        return 0;
+    } else {
+        rt_kprintf("[INIT] ERROR: %s initialization failed with code %d\n", name, result);
+        return result;
+    }
+}
+
+/* 显示启动进度 */
+static void system_show_startup_progress(int stage, int total_stages, const char *message)
+{
+    int progress = (stage * 100) / total_stages;
+    rt_kprintf("[%d/%d] (%d%%) %s\n", stage, total_stages, progress, message);
+}
+
+/* 系统初始化阶段管理 */
+static int system_init_stage(int stage, const char *stage_name, int (*init_func)(void))
+{
+    system_show_startup_progress(stage, 10, stage_name);
+    
+    int result = safe_component_init(stage_name, init_func);
+    
+    if (result != 0) {
+        rt_kprintf("[INIT] CRITICAL: Stage %d (%s) failed, aborting startup\n", 
+                  stage, stage_name);
+        g_system_state.in_error_state = true;
+        g_system_state.error_count++;
+        return result;
+    }
+    
+    // 每个阶段完成后等待一小段时间，确保初始化稳定
+    rt_thread_mdelay(100);
+    return 0;
+}
+
+/* 系统健康监控 */
+static void system_health_monitor(void)
+{
+    static uint32_t last_published = 0, last_processed = 0;
+    rt_tick_t now = rt_tick_get();
+    
+    // 每30秒检查一次系统健康状态
+    if ((now - g_system_state.last_health_check) < rt_tick_from_millisecond(30000)) {
+        return;
+    }
+    
+    g_system_state.last_health_check = now;
+    
+    // 检查事件总线状态
+    uint32_t published, processed, dropped, queue_size;
+    if (event_bus_get_stats(&published, &processed, &dropped, &queue_size) == 0) {
+        
+        // 检查事件处理是否停滞
+        if (published == last_published && processed == last_processed && published > 0) {
+            rt_kprintf("[HEALTH] WARNING: Event processing stalled\n");
+            event_bus_cleanup();
+        }
+        
+        // 检查丢弃率
+        if (published > 0 && (dropped * 100 / published) > 10) {
+            rt_kprintf("[HEALTH] WARNING: High event drop rate (%d%%)\n", 
+                      dropped * 100 / published);
+            event_bus_cleanup();
+        }
+        
+        last_published = published;
+        last_processed = processed;
+    }
+    
+    // 检查内存使用情况
+    rt_size_t total, used, max_used;
+    rt_memory_info(&total, &used, &max_used);
+    float usage_percent = (float)used * 100 / total;
+    
+    if (usage_percent > 85) {
+        rt_kprintf("[HEALTH] WARNING: High memory usage (%.1f%%)\n", usage_percent);
+        
+        // 触发数据清理
+        data_manager_cleanup_expired_data();
+        event_bus_cleanup();
+        
+        // 如果内存使用仍然很高，进入错误恢复模式
+        rt_memory_info(&total, &used, &max_used);
+        usage_percent = (float)used * 100 / total;
+        if (usage_percent > 90) {
+            rt_kprintf("[HEALTH] CRITICAL: Memory usage critical, entering recovery mode\n");
+            system_error_recovery();
+        }
+    }
+    
+    // 检查HID设备状态
+    if (hid_device_ready()) {
+        int sem_count = hid_get_semaphore_count();
+        if (sem_count > 1) {
+            rt_kprintf("[HEALTH] WARNING: HID semaphore anomaly (%d), fixing\n", sem_count);
+            hid_reset_semaphore();
+        }
+    }
+}
+
+/* 系统错误恢复 */
+static void system_error_recovery(void)
+{
+    rt_kprintf("[RECOVERY] Starting system recovery procedures...\n");
+    
+    // 停止所有LED效果
+    led_effects_stop_all_effects();
+    led_effects_turn_off_all_leds();
+    
+    // 清理数据和事件
+    data_manager_cleanup_expired_data();
+    data_manager_reset_all_data();
+    event_bus_cleanup();
+    
+    // 重置屏幕到默认组 - 使用正确的函数名
+    screen_switch_group(SCREEN_GROUP_1);
+    
+    // 闪烁红色LED表示恢复模式
+    for (int i = 0; i < 3; i++) {
+        led_effects_set_all_leds(RGB_COLOR_RED);
+        rt_thread_mdelay(200);
+        led_effects_set_all_leds(RGB_COLOR_BLACK);
+        rt_thread_mdelay(200);
+    }
+    
+    rt_kprintf("[RECOVERY] Recovery procedures completed\n");
+}
+
+/* 优雅关闭函数 */
+static void system_graceful_shutdown(void)
+{
+    rt_kprintf("[SHUTDOWN] Starting graceful shutdown...\n");
+    
+    // 1. 停止所有效果和指示灯
+    screen_context_cleanup_background_breathing();
+    led_effects_stop_all_effects();
+    led_effects_turn_off_all_leds();
+    
+    // 2. 清理各个组件（按初始化的逆序）
     cleanup_triple_screen_display();
     app_controller_deinit();
-    light_effects_deinit();
-    led_controller_deinit();
     sht30_controller_deinit();
     serial_data_handler_deinit();
     data_manager_deinit();
+    led_effects_manager_deinit();
     event_bus_deinit();
     
-    return RT_EOK;
+    // 3. 清理系统状态
+    if (g_system_state.system_lock) {
+        rt_mutex_delete(g_system_state.system_lock);
+        g_system_state.system_lock = RT_NULL;
+    }
+    
+    rt_kprintf("[SHUTDOWN] Graceful shutdown completed\n");
+}
+
+/* 主函数重新设计 */
+int main(void)
+{
+    rt_err_t ret = RT_EOK;
+    HAL_PIN_Set(PAD_PA07, GPIO_A7, PIN_NOPULL, 1);//初始化LDO
+    BSP_GPIO_Set(7, 1, 1);
+    // 初始化系统状态
+    memset(&g_system_state, 0, sizeof(g_system_state));
+    g_system_state.system_lock = rt_mutex_create("sys_lock", RT_IPC_FLAG_PRIO);
+    if (!g_system_state.system_lock) {
+        rt_kprintf("[MAIN] CRITICAL: Failed to create system lock\n");
+        return -RT_ENOMEM;
+    }
+    
+    rt_kprintf("========================================\n");
+    rt_kprintf("  SiFli Smart Display System Starting  \n");
+    rt_kprintf("========================================\n");
+    
+    // 阶段1: 显示系统初始化
+    ret = system_init_stage(1, "Display System", init_display_system);
+    if (ret != 0) goto error_exit;
+    
+    // 阶段2: 数据池初始化
+    ret = system_init_stage(2, "Data Pool", init_data_pool);
+    if (ret != 0) goto error_exit;
+    
+    // 阶段3: 事件总线初始化 (高优先级)
+    ret = system_init_stage(3, "Event Bus", event_bus_init);
+    if (ret != 0) goto error_exit;
+    
+    // 阶段4: LED效果管理器初始化 (重新设计版本)
+    ret = system_init_stage(4, "LED Effects Manager", led_effects_manager_init);
+    if (ret != 0) {
+        rt_kprintf("[INIT] WARNING: LED effects failed, continuing without LED support\n");
+        // LED失败不是致命的，继续启动
+    }
+    
+    // 阶段5: 数据管理器初始化
+    ret = system_init_stage(5, "Data Manager", data_manager_init);
+    if (ret != 0) goto error_exit;
+    
+    // 阶段6: 串口数据处理器初始化
+    ret = system_init_stage(6, "Serial Data Handler", serial_data_handler_init);
+    if (ret != 0) {
+        rt_kprintf("[INIT] WARNING: Serial handler failed, continuing without serial support\n");
+        // 串口失败不是致命的
+    }
+    
+    // 阶段7: HID和应用控制器初始化
+    ret = system_init_stage(7, "HID & App Controller", app_controller_init);
+    if (ret != 0) {
+        rt_kprintf("[INIT] WARNING: HID system failed, continuing without HID support\n");
+        // HID失败不是致命的
+    }
+    
+    // 阶段8: 传感器初始化 (可选)
+    ret = system_init_stage(8, "SHT30 Sensor", init_sht30_sensor);
+    if (ret != 0) {
+        rt_kprintf("[INIT] WARNING: SHT30 sensor failed, continuing without sensor\n");
+    }
+    
+    // 阶段9: 屏幕系统初始化
+    ret = system_init_stage(9, "Screen System", init_screen_system);
+    if (ret != 0) goto error_exit;
+    
+    // 阶段10: 启动LED欢迎效果
+    system_show_startup_progress(10, 10, "Startup Effects & System Ready");
+    
+    // 启动LED欢迎序列 (如果LED管理器可用)
+    rt_kprintf("=== 启动LED欢迎序列 ===\n");
+    
+    // 第一阶段：青色流水灯
+    led_effect_handle_t flowing = led_effects_flowing(0xFFCCFF, 1000, 255, 2000);
+    rt_thread_mdelay(2000);
+    
+    // 第二阶段：蓝色呼吸灯 (持续运行)
+    led_effect_handle_t breathing = led_effects_breathing(RGB_COLOR_BLUE, 2000, 255, 0);
+    
+    rt_kprintf("=== 系统启动完成 ===\n");
+    rt_kprintf("串口数据格式: sys_set <key> <value>\n");
+    rt_kprintf("支持的键值:\n");
+    rt_kprintf("  时间相关: time, date\n"); 
+    rt_kprintf("  天气相关: temp, weather_code, humidity, pressure, city_code\n");
+    rt_kprintf("  股票相关: stock_name, stock_price, stock_change\n");
+    rt_kprintf("  系统相关: cpu, cpu_temp, mem, gpu, gpu_temp, net_up, net_down\n");
+    
+    g_system_state.system_ready = true;
+    g_system_state.last_health_check = rt_tick_get();
+    
+    // 主循环 - 重新设计
+    rt_kprintf("[MAIN] Entering main loop with health monitoring\n");
+    
+    while (g_system_state.system_ready) {
+        // 1. 处理LVGL定时器
+        uint32_t ms = lv_timer_handler();
+        
+        // 2. 处理屏幕切换请求
+        screen_process_switch_request();
+        screen_context_process_background_restore();
+        // 3. 系统健康监控
+        if (!g_system_state.in_error_state) {
+            system_health_monitor();
+        }
+        
+        // 4. 错误状态检查
+        if (g_system_state.in_error_state && g_system_state.error_count > 5) {
+            rt_kprintf("[MAIN] CRITICAL: Too many errors, initiating shutdown\n");
+            break;
+        }
+        
+        // 5. 控制主循环频率
+        uint32_t sleep_time = (ms > 0 && ms < 100) ? ms : 50;
+        rt_thread_mdelay(sleep_time);
+    }
+    
+    // 正常退出清理
+    system_graceful_shutdown();
+    return 0;
+    
+error_exit:
+    // 错误退出清理
+    rt_kprintf("[MAIN] CRITICAL ERROR during initialization, performing emergency cleanup\n");
+    g_system_state.in_error_state = true;
+    // 清理背景呼吸灯系统（新增）
+    screen_context_cleanup_background_breathing();    
+    // 尝试显示错误LED指示
+    for (int i = 0; i < 5; i++) {
+        led_effects_set_all_leds(RGB_COLOR_RED);
+        rt_thread_mdelay(100);
+        led_effects_set_all_leds(RGB_COLOR_BLACK);
+        rt_thread_mdelay(100);
+    }
+    
+    system_graceful_shutdown();
+    return ret;
+}
+
+/* 导出给其他模块的系统状态查询函数 */
+bool system_is_ready(void)
+{
+    return g_system_state.system_ready && !g_system_state.in_error_state;
+}
+
+bool system_is_in_error_state(void)
+{
+    return g_system_state.in_error_state;
+}
+
+uint32_t system_get_error_count(void)
+{
+    return g_system_state.error_count;
 }

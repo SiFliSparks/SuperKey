@@ -1,3 +1,5 @@
+// event_bus.h - 更新版本
+
 #ifndef EVENT_BUS_H
 #define EVENT_BUS_H
 
@@ -44,9 +46,9 @@ typedef enum {
 
 typedef enum {
     EVENT_PRIORITY_LOW = 0,
-    EVENT_PRIORITY_NORMAL,
-    EVENT_PRIORITY_HIGH,
-    EVENT_PRIORITY_CRITICAL
+    EVENT_PRIORITY_NORMAL = 1,
+    EVENT_PRIORITY_HIGH = 2,     
+    EVENT_PRIORITY_CRITICAL = 3
 } event_priority_t;
 
 typedef struct {
@@ -130,6 +132,7 @@ typedef struct {
 #define MODULE_ID_SENSOR        0x0007
 #define MODULE_ID_SYSTEM        0x0008
 
+// 核心函数
 int event_bus_init(void);
 int event_bus_deinit(void);
 int event_bus_publish(event_type_t type, const void *event_data, size_t data_size, 
@@ -140,9 +143,18 @@ int event_bus_subscribe(event_type_t event_type, event_handler_t handler,
                        void *user_data, event_priority_t min_priority);
 int event_bus_unsubscribe(event_type_t event_type, event_handler_t handler);
 int event_bus_enable_subscription(event_type_t event_type, event_handler_t handler, bool enable);
+
+// 统计和监控函数
 int event_bus_get_stats(uint32_t *published_count, uint32_t *processed_count, 
                        uint32_t *dropped_count, uint32_t *queue_size);
 int event_bus_cleanup(void);
+
+// 新增：增强功能
+int event_bus_enable_health_monitor(bool enable);
+uint32_t event_bus_get_error_count(void);
+int event_bus_reset_stats(void);
+
+// 便捷函数
 int event_bus_publish_data_update(event_type_t data_type, const void *data);
 int event_bus_publish_screen_switch(screen_group_t target_group, bool force);
 int event_bus_publish_error(int error_code, const char *error_msg, const char *module_name);

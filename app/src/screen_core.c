@@ -293,11 +293,23 @@ int screen_core_process_messages(void)
 /* 消息处理函数实现 */
 static int process_update_time_message(void)
 {
-    /* 只在Group 1显示时更新时间 */
+    /* 扩展时间更新条件：
+     * 1. L1层级的Group 1（原有逻辑）
+     * 2. L2层级的时间详情页面（新增逻辑）
+     */
+    
+    // 情况1：L1层级的Group 1 - 原有逻辑保持不变
     if (g_core.current_group == SCREEN_GROUP_1 && g_core.current_level == SCREEN_LEVEL_1) {
         return screen_ui_update_time_display();
     }
-    return 0;
+    
+    // 情况2：L2层级的时间详情页面 - 新增逻辑支持数字时钟
+    if (g_core.current_level == SCREEN_LEVEL_2 && g_core.l2_current_group == SCREEN_L2_TIME_GROUP) {
+        rt_kprintf("[ScreenCore] Updating L2 digital clock time\n");
+        return screen_ui_update_time_display();
+    }
+    
+    return 0; // 其他情况不更新时间
 }
 
 static int process_update_weather_message(const weather_data_t *data)
@@ -367,6 +379,73 @@ static int process_update_system_message(const system_monitor_data_t *data)
     
     return screen_ui_update_system_display(data);
 }
+/* L2页面管理函数 - 添加在文件末尾 */
+
+/**
+ * 获取L2组中的最大页面数
+ */
+int get_max_pages_in_l2_group(screen_l2_group_t l2_group)
+{
+    switch (l2_group) {
+        case SCREEN_L2_TIME_GROUP:
+            return 1;  /* 目前只有时间详情页 */
+        case SCREEN_L2_MEDIA_GROUP:
+            return 1;  /* 目前只有媒体控制页 */
+        case SCREEN_L2_WEB_GROUP:
+            return 1;  /* 目前只有网页控制页 */
+        case SCREEN_L2_SHORTCUT_GROUP:
+            return 1;  /* 目前只有快捷键控制页 */
+        default:
+            return 0;
+    }
+}
+
+/**
+ * 获取L2组中的下一页
+ */
+static screen_l2_page_t get_next_page_in_l2_group(screen_l2_group_t l2_group, screen_l2_page_t current_page)
+{
+    int max_pages = get_max_pages_in_l2_group(l2_group);
+    if (max_pages <= 1) {
+        return current_page;  /* 只有一页，不切换 */
+    }
+    
+    /* 将来如果有多页，可以这样实现：
+    switch (l2_group) {
+        case SCREEN_L2_TIME_GROUP:
+            return (current_page + 1) % TIME_GROUP_MAX_PAGES;
+        // ... 其他组
+        default:
+            return current_page;
+    }
+    */
+    
+    return current_page;
+}
+
+/**
+ * 获取L2组中的上一页
+ */
+static screen_l2_page_t get_prev_page_in_l2_group(screen_l2_group_t l2_group, screen_l2_page_t current_page)
+{
+    int max_pages = get_max_pages_in_l2_group(l2_group);
+    if (max_pages <= 1) {
+        return current_page;  /* 只有一页，不切换 */
+    }
+    
+    /* 将来如果有多页，可以这样实现：
+    switch (l2_group) {
+        case SCREEN_L2_TIME_GROUP:
+            return (current_page == 0) ? (TIME_GROUP_MAX_PAGES - 1) : (current_page - 1);
+        // ... 其他组
+        default:
+            return current_page;
+    }
+    */
+    
+    return current_page;
+}
+
 
 static int process_switch_group_message(const screen_switch_msg_t *msg)
 {
@@ -446,6 +525,12 @@ static int process_enter_l2_message(const screen_l2_enter_msg_t *msg)
         g_core.l2_current_page = msg->l2_page;
         rt_mutex_release(g_core.state_lock);
         
+        // 如果进入的是时间详情L2页面，启动时钟定时器
+        if (msg->l2_group == SCREEN_L2_TIME_GROUP) {
+            screen_timer_start_l2_timers();
+            rt_kprintf("[ScreenCore] Started L2 clock timer for digital clock\n");
+        }
+        
         rt_kprintf("[ScreenCore] Successfully entered L2\n");
     }
     
@@ -458,6 +543,7 @@ static int process_return_l1_message(void)
     
     rt_mutex_take(g_core.state_lock, RT_WAITING_FOREVER);
     screen_group_t l1_group = g_core.current_group;
+    screen_l2_group_t previous_l2_group = g_core.l2_current_group;
     rt_mutex_release(g_core.state_lock);
     
     /* 执行返回L1 */
@@ -467,6 +553,12 @@ static int process_return_l1_message(void)
         rt_mutex_take(g_core.state_lock, RT_WAITING_FOREVER);
         g_core.current_level = SCREEN_LEVEL_1;
         rt_mutex_release(g_core.state_lock);
+        
+        // 如果是从时间详情L2返回，需要停止L2专用定时器
+        if (previous_l2_group == SCREEN_L2_TIME_GROUP) {
+            screen_timer_stop(SCREEN_TIMER_CLOCK);
+            rt_kprintf("[ScreenCore] Stopped L2 clock timer\n");
+        }
         
         /* 重启对应组的定时器 */
         if (l1_group == SCREEN_GROUP_1) {
@@ -517,4 +609,16 @@ bool screen_core_is_switching(void)
     bool switching = g_core.switching_in_progress;
     rt_mutex_release(g_core.state_lock);
     return switching;
+}
+
+screen_l2_group_t screen_core_get_current_l2_group(void)
+{
+    if (!g_core.state_lock) {
+        return SCREEN_L2_TIME_GROUP; // 默认返回
+    }
+    
+    rt_mutex_take(g_core.state_lock, RT_WAITING_FOREVER);
+    screen_l2_group_t l2_group = g_core.l2_current_group;
+    rt_mutex_release(g_core.state_lock);
+    return l2_group;
 }

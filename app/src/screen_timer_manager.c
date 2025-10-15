@@ -60,7 +60,17 @@ static void safe_timer_callback(void *parameter)
             break;
     }
 }
-
+// 添加新的函数：专门为L2层级启动时钟定时器
+int screen_timer_start_l2_timers(void)
+{
+    rt_kprintf("[TimerMgr] Starting L2 timers (clock for digital display)\n");
+    
+    int ret = 0;
+    // L2时间详情页面需要时钟定时器保持运行
+    ret |= screen_timer_start(SCREEN_TIMER_CLOCK);
+    
+    return ret;
+}
 int screen_timer_manager_init(void)
 {
     if (g_timer_mgr.initialized) {

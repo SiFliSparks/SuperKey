@@ -11,14 +11,23 @@ extern "C" {
 typedef enum {
     KEY_CTX_NONE = 0,
     KEY_CTX_HID_SHORTCUT,
-    KEY_CTX_MENU_NAVIGATION,
+    KEY_CTX_MENU_NAVIGATION,    /* Group 1: 时间/天气/股票界面 */
     KEY_CTX_VOLUME_CONTROL,
-    KEY_CTX_SETTINGS,
-    KEY_CTX_SYSTEM,
+    KEY_CTX_SETTINGS,           /* Group 3: HID功能选择界面 */
+    KEY_CTX_SYSTEM,            /* Group 2: CPU/内存/网络监控界面 */
     KEY_CTX_L2_TIME,
     KEY_CTX_L2_MEDIA,
     KEY_CTX_L2_WEB,
     KEY_CTX_L2_SHORTCUT,
+    
+    /* 新增：Group 4实用工具上下文ID */
+    KEY_CTX_UTILITIES,         /* Group 4：实用工具主界面 */
+    
+    /* 新增：L2木鱼相关上下文ID */
+    KEY_CTX_L2_MUYU,          /* L2：赛博木鱼界面 */
+    KEY_CTX_L2_TOMATO,        /* L2：番茄钟界面（预留） */
+    KEY_CTX_L2_GALLERY,       /* L2：全屏图片界面（预留） */
+    
     KEY_CTX_MAX
 } key_context_id_t;
 

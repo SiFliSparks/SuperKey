@@ -1,6 +1,6 @@
 /**
  * @file screen_types.h
- * @brief 屏幕系统通用数据结构定义
+ * @brief 屏幕系统通用数据结构定义 - 添加实用工具Group 4
  * 
  * 这个文件包含了屏幕系统中使用的所有数据结构，
  * 可以被多个模块引用，避免循环依赖问题。
@@ -16,11 +16,12 @@
 extern "C" {
 #endif
 
-/* 屏幕组定义 */
+/* 屏幕组定义 - 新增Group 4 */
 typedef enum {
     SCREEN_GROUP_1 = 0,  /* 第一组：时间/天气/股票 */
     SCREEN_GROUP_2,      /* 第二组：CPU-GPU/内存/网络 */
     SCREEN_GROUP_3,      /* 第三组：HID快捷键 */
+    SCREEN_GROUP_4,      /* 第四组：实用工具（木鱼/番茄钟/全屏图片） */
     SCREEN_GROUP_MAX
 } screen_group_t;
 
@@ -31,7 +32,7 @@ typedef enum {
     SCREEN_LEVEL_MAX
 } screen_level_t;
 
-/* 第二层级组定义 */
+/* 第二层级组定义 - 新增实用工具相关组 */
 typedef enum {
     SCREEN_L2_TIME_GROUP = 0,    /* 时间扩展组 */
     SCREEN_L2_WEATHER_GROUP,     /* 天气扩展组（预留） */
@@ -39,10 +40,13 @@ typedef enum {
     SCREEN_L2_MEDIA_GROUP,       /* 媒体控制扩展组 */
     SCREEN_L2_WEB_GROUP,         
     SCREEN_L2_SHORTCUT_GROUP,    
+    SCREEN_L2_MUYU_GROUP,        /* 赛博木鱼扩展组 - 新增 */
+    SCREEN_L2_TOMATO_GROUP,      /* 番茄钟扩展组 - 新增 */
+    SCREEN_L2_GALLERY_GROUP,     /* 全屏图片扩展组 - 新增 */
     SCREEN_L2_GROUP_MAX
 } screen_l2_group_t;
 
-/* 第二层级页面定义 */
+/* 第二层级页面定义 - 新增实用工具页面 */
 typedef enum {
     /* 时间扩展组页面 */
     SCREEN_L2_TIME_DETAIL = 0,   /* 时间详情页 */
@@ -56,6 +60,15 @@ typedef enum {
     /* 快捷键控制组页面  */
     SCREEN_L2_SHORTCUT_CONTROL = 3, /* 快捷键控制页 */
     
+    /* 赛博木鱼组页面 - 新增 */
+    SCREEN_L2_MUYU_MAIN = 4,     /* 木鱼主界面 */
+    
+    /* 番茄钟组页面 - 新增 */
+    SCREEN_L2_TOMATO_TIMER = 5,  /* 番茄钟计时器 */
+    
+    /* 全屏图片组页面 - 新增 */
+    SCREEN_L2_GALLERY_VIEW = 6,  /* 图片查看器 */
+    
     /* 其他组页面（预留） */
     SCREEN_L2_PAGE_MAX
 } screen_l2_page_t;
@@ -68,6 +81,37 @@ typedef struct {
     screen_l2_page_t l2_current_page;   /* 第二层级当前页面 */
     screen_group_t l1_previous_group;   /* 返回时的第一层级组 */
 } screen_hierarchy_context_t;
+
+/* 赛博木鱼数据结构 - 新增 */
+typedef struct {
+    uint32_t tap_count;          /* 敲击计数 */
+    uint32_t total_taps;         /* 历史总计数 */
+    uint32_t session_taps;       /* 本次会话计数 */
+    char last_tap_time[32];      /* 最后敲击时间 */
+    bool sound_enabled;          /* 音效开关 */
+    uint8_t tap_effect_level;    /* 敲击特效级别 */
+    bool auto_save;              /* 自动保存开关 */
+} muyu_data_t;
+
+/* 番茄钟数据结构 - 新增（预留） */
+typedef struct {
+    uint32_t work_duration_min;  /* 工作时长（分钟） */
+    uint32_t break_duration_min; /* 休息时长（分钟） */
+    uint32_t remaining_seconds;  /* 剩余秒数 */
+    bool is_running;             /* 是否正在运行 */
+    bool is_work_session;        /* 是否工作时段 */
+    uint32_t completed_sessions; /* 完成的番茄钟数 */
+} tomato_timer_data_t;
+
+/* 全屏图片数据结构 - 新增（预留） */
+typedef struct {
+    uint8_t current_image_index; /* 当前图片索引 */
+    uint8_t total_images;        /* 图片总数 */
+    bool slideshow_enabled;      /* 幻灯片模式 */
+    uint32_t slide_interval_ms;  /* 幻灯片间隔 */
+    bool zoom_enabled;           /* 缩放功能 */
+    float zoom_factor;           /* 缩放比例 */
+} gallery_data_t;
 
 /* 简化版天气数据结构 - 仅包含finsh协议支持的字段 */
 typedef struct {
