@@ -403,42 +403,42 @@ static void build_middle_weather_panel(lv_obj_t *parent)
 {
     /* 城市名 - 顶部左对齐 */
     g_ui_mgr.handles.group1_weather.city_label = lv_label_create(parent);
-    lv_label_set_text(g_ui_mgr.handles.group1_weather.city_label, "杭州");
+    lv_label_set_text(g_ui_mgr.handles.group1_weather.city_label, "未知");
     lv_obj_add_style(g_ui_mgr.handles.group1_weather.city_label, &g_ui_mgr.handles.style_large, 0);
     lv_obj_set_style_text_color(g_ui_mgr.handles.group1_weather.city_label, lv_color_make(100, 200, 255), 0);
     lv_obj_align(g_ui_mgr.handles.group1_weather.city_label, LV_ALIGN_TOP_LEFT, 0, 0);
     
     /* 温度 - 城市名右侧，相同字号 */
     g_ui_mgr.handles.group1_weather.temperature_label = lv_label_create(parent);
-    lv_label_set_text(g_ui_mgr.handles.group1_weather.temperature_label, "0.0°C");
+    lv_label_set_text(g_ui_mgr.handles.group1_weather.temperature_label, "--°C");
     lv_obj_add_style(g_ui_mgr.handles.group1_weather.temperature_label, &g_ui_mgr.handles.style_large, 0);
     lv_obj_set_style_text_color(g_ui_mgr.handles.group1_weather.temperature_label, lv_color_white(), 0);
     lv_obj_align_to(g_ui_mgr.handles.group1_weather.temperature_label, g_ui_mgr.handles.group1_weather.city_label, LV_ALIGN_OUT_RIGHT_MID, 10, 0);
     
     /* 天气描述 - 城市名下方，左对齐 */
     g_ui_mgr.handles.group1_weather.weather_label = lv_label_create(parent);
-    lv_label_set_text(g_ui_mgr.handles.group1_weather.weather_label, "晴");
+    lv_label_set_text(g_ui_mgr.handles.group1_weather.weather_label, "未知");
     lv_obj_add_style(g_ui_mgr.handles.group1_weather.weather_label, &g_ui_mgr.handles.style_medium, 0);
     lv_obj_set_style_text_color(g_ui_mgr.handles.group1_weather.weather_label, lv_color_make(255, 220, 100), 0);
     lv_obj_align_to(g_ui_mgr.handles.group1_weather.weather_label, g_ui_mgr.handles.group1_weather.city_label, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 5);
     
     /* 湿度 - 天气描述下方，左对齐 */
     g_ui_mgr.handles.group1_weather.humidity_label = lv_label_create(parent);
-    lv_label_set_text(g_ui_mgr.handles.group1_weather.humidity_label, "湿度: 0%");
+    lv_label_set_text(g_ui_mgr.handles.group1_weather.humidity_label, "湿度: -%");
     lv_obj_add_style(g_ui_mgr.handles.group1_weather.humidity_label, &g_ui_mgr.handles.style_small, 0);
     lv_obj_set_style_text_color(g_ui_mgr.handles.group1_weather.humidity_label, lv_color_make(150, 200, 255), 0);
     lv_obj_align_to(g_ui_mgr.handles.group1_weather.humidity_label, g_ui_mgr.handles.group1_weather.weather_label, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 5);
     
     /* 气压 - 湿度下方，左对齐 */
     g_ui_mgr.handles.group1_weather.pressure_label = lv_label_create(parent);
-    lv_label_set_text(g_ui_mgr.handles.group1_weather.pressure_label, "1013hPa");
+    lv_label_set_text(g_ui_mgr.handles.group1_weather.pressure_label, "----hPa");
     lv_obj_add_style(g_ui_mgr.handles.group1_weather.pressure_label, &g_ui_mgr.handles.style_small, 0);
     lv_obj_set_style_text_color(g_ui_mgr.handles.group1_weather.pressure_label, lv_color_make(150, 200, 255), 0);
     lv_obj_align_to(g_ui_mgr.handles.group1_weather.pressure_label, g_ui_mgr.handles.group1_weather.humidity_label, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 2);
     
     /* SHT30传感器数据 - 底部居中 */
     g_ui_mgr.handles.group1_weather.sensor_label = lv_label_create(parent);
-    lv_label_set_text(g_ui_mgr.handles.group1_weather.sensor_label, "传感器: --°C --%");
+    lv_label_set_text(g_ui_mgr.handles.group1_weather.sensor_label, "当前: --°C --%");
     lv_obj_add_style(g_ui_mgr.handles.group1_weather.sensor_label, &g_ui_mgr.handles.style_small, 0);
     lv_obj_set_style_text_color(g_ui_mgr.handles.group1_weather.sensor_label, lv_color_make(100, 255, 100), 0);
     lv_obj_align(g_ui_mgr.handles.group1_weather.sensor_label, LV_ALIGN_BOTTOM_MID, 0, 0);
@@ -451,28 +451,28 @@ static void build_right_stock_panel(lv_obj_t *parent)
 {
     /* 股票名称 - 顶部居中 */
     g_ui_mgr.handles.group1_stock.name_label = lv_label_create(parent);
-    lv_label_set_text(g_ui_mgr.handles.group1_stock.name_label, "上证指数");
+    lv_label_set_text(g_ui_mgr.handles.group1_stock.name_label, "等待数据");
     lv_obj_add_style(g_ui_mgr.handles.group1_stock.name_label, &g_ui_mgr.handles.style_medium, 0);
     lv_obj_set_style_text_color(g_ui_mgr.handles.group1_stock.name_label, lv_color_white(), 0);
     lv_obj_align(g_ui_mgr.handles.group1_stock.name_label, LV_ALIGN_TOP_MID, 0, 0);
     
     /* 当前价格 - 标题下方，更大字号 */
     g_ui_mgr.handles.group1_stock.price_label = lv_label_create(parent);
-    lv_label_set_text(g_ui_mgr.handles.group1_stock.price_label, "3234.56");
+    lv_label_set_text(g_ui_mgr.handles.group1_stock.price_label, "----------");
     lv_obj_add_style(g_ui_mgr.handles.group1_stock.price_label, &g_ui_mgr.handles.style_xlarge, 0);
     lv_obj_set_style_text_color(g_ui_mgr.handles.group1_stock.price_label, lv_color_white(), 0);
     lv_obj_align_to(g_ui_mgr.handles.group1_stock.price_label, g_ui_mgr.handles.group1_stock.name_label, LV_ALIGN_OUT_BOTTOM_MID, 0, 5);
     
     /* 涨跌信息合并显示 */
     g_ui_mgr.handles.group1_stock.change_label = lv_label_create(parent);
-    lv_label_set_text(g_ui_mgr.handles.group1_stock.change_label, "+12.34\n+1.23%");
+    lv_label_set_text(g_ui_mgr.handles.group1_stock.change_label, "----.----\n---.---%");
     lv_obj_add_style(g_ui_mgr.handles.group1_stock.change_label, &g_ui_mgr.handles.style_medium, 0);
     lv_obj_set_style_text_color(g_ui_mgr.handles.group1_stock.change_label, lv_color_make(255, 80, 80), 0);
     lv_obj_align_to(g_ui_mgr.handles.group1_stock.change_label, g_ui_mgr.handles.group1_stock.price_label, LV_ALIGN_OUT_BOTTOM_MID, 0, 3);
     
     /* 更新时间 - 底部居中，小字 */
     g_ui_mgr.handles.group1_stock.update_time_label = lv_label_create(parent);
-    lv_label_set_text(g_ui_mgr.handles.group1_stock.update_time_label, "14:30:15");
+    lv_label_set_text(g_ui_mgr.handles.group1_stock.update_time_label, "--:--:--");
     lv_obj_add_style(g_ui_mgr.handles.group1_stock.update_time_label, &g_ui_mgr.handles.style_xsmall, 0);
     lv_obj_set_style_text_color(g_ui_mgr.handles.group1_stock.update_time_label, lv_color_make(120, 120, 120), 0);
     lv_obj_align(g_ui_mgr.handles.group1_stock.update_time_label, LV_ALIGN_BOTTOM_MID, 0, 0);
@@ -496,17 +496,17 @@ static void build_left_cpu_gpu_panel(lv_obj_t *parent)
     
     /* CPU使用率 */
     g_ui_mgr.handles.group2_cpu_gpu.cpu_usage = lv_label_create(parent);
-    lv_label_set_text(g_ui_mgr.handles.group2_cpu_gpu.cpu_usage, "35.2%");
+    lv_label_set_text(g_ui_mgr.handles.group2_cpu_gpu.cpu_usage, "--.-%");
     lv_obj_add_style(g_ui_mgr.handles.group2_cpu_gpu.cpu_usage, &g_ui_mgr.handles.style_large, 0);
     lv_obj_set_style_text_color(g_ui_mgr.handles.group2_cpu_gpu.cpu_usage, lv_color_make(255, 165, 0), 0);
     lv_obj_align_to(g_ui_mgr.handles.group2_cpu_gpu.cpu_usage, g_ui_mgr.handles.group2_cpu_gpu.cpu_title, LV_ALIGN_OUT_BOTTOM_MID, 10, 5);
     
     /* CPU温度 */
     g_ui_mgr.handles.group2_cpu_gpu.cpu_temp = lv_label_create(parent);
-    lv_label_set_text(g_ui_mgr.handles.group2_cpu_gpu.cpu_temp, "58.5°C");
+    lv_label_set_text(g_ui_mgr.handles.group2_cpu_gpu.cpu_temp, "--.-°C");
     lv_obj_add_style(g_ui_mgr.handles.group2_cpu_gpu.cpu_temp, &g_ui_mgr.handles.style_large, 0);
     lv_obj_set_style_text_color(g_ui_mgr.handles.group2_cpu_gpu.cpu_temp, lv_color_make(255, 100, 100), 0);
-    lv_obj_align_to(g_ui_mgr.handles.group2_cpu_gpu.cpu_temp, g_ui_mgr.handles.group2_cpu_gpu.cpu_usage, LV_ALIGN_OUT_RIGHT_MID, 5, 0);
+    lv_obj_align_to(g_ui_mgr.handles.group2_cpu_gpu.cpu_temp, g_ui_mgr.handles.group2_cpu_gpu.cpu_usage, LV_ALIGN_OUT_RIGHT_MID, 20, 0);
     
     /* GPU标题 */
     g_ui_mgr.handles.group2_cpu_gpu.gpu_title = lv_label_create(parent);
@@ -517,17 +517,17 @@ static void build_left_cpu_gpu_panel(lv_obj_t *parent)
     
     /* GPU使用率 */
     g_ui_mgr.handles.group2_cpu_gpu.gpu_usage = lv_label_create(parent);
-    lv_label_set_text(g_ui_mgr.handles.group2_cpu_gpu.gpu_usage, "15.8%");
+    lv_label_set_text(g_ui_mgr.handles.group2_cpu_gpu.gpu_usage, "--.-%");
     lv_obj_add_style(g_ui_mgr.handles.group2_cpu_gpu.gpu_usage, &g_ui_mgr.handles.style_large, 0);
     lv_obj_set_style_text_color(g_ui_mgr.handles.group2_cpu_gpu.gpu_usage, lv_color_make(0, 255, 127), 0);
     lv_obj_align_to(g_ui_mgr.handles.group2_cpu_gpu.gpu_usage, g_ui_mgr.handles.group2_cpu_gpu.gpu_title, LV_ALIGN_OUT_BOTTOM_MID, 10, 5);
     
     /* GPU温度 */
     g_ui_mgr.handles.group2_cpu_gpu.gpu_temp = lv_label_create(parent);
-    lv_label_set_text(g_ui_mgr.handles.group2_cpu_gpu.gpu_temp, "42.3°C");
+    lv_label_set_text(g_ui_mgr.handles.group2_cpu_gpu.gpu_temp, "--.-°C");
     lv_obj_add_style(g_ui_mgr.handles.group2_cpu_gpu.gpu_temp, &g_ui_mgr.handles.style_large, 0);
     lv_obj_set_style_text_color(g_ui_mgr.handles.group2_cpu_gpu.gpu_temp, lv_color_make(100, 255, 150), 0);
-    lv_obj_align_to(g_ui_mgr.handles.group2_cpu_gpu.gpu_temp, g_ui_mgr.handles.group2_cpu_gpu.gpu_usage, LV_ALIGN_OUT_RIGHT_MID, 5, 0);
+    lv_obj_align_to(g_ui_mgr.handles.group2_cpu_gpu.gpu_temp, g_ui_mgr.handles.group2_cpu_gpu.gpu_usage, LV_ALIGN_OUT_RIGHT_MID, 20, 0);
 }
 
 /**
@@ -544,14 +544,14 @@ static void build_middle_memory_panel(lv_obj_t *parent)
     
     /* 内存使用率 - 使用更大字体，居中显示 */
     g_ui_mgr.handles.group2_memory.ram_usage = lv_label_create(parent);
-    lv_label_set_text(g_ui_mgr.handles.group2_memory.ram_usage, "0.0%");
+    lv_label_set_text(g_ui_mgr.handles.group2_memory.ram_usage, "-.-%");
     lv_obj_add_style(g_ui_mgr.handles.group2_memory.ram_usage, &g_ui_mgr.handles.style_xlarge, 0);
     lv_obj_set_style_text_color(g_ui_mgr.handles.group2_memory.ram_usage, lv_color_make(255, 215, 0), 0);
     lv_obj_align(g_ui_mgr.handles.group2_memory.ram_usage, LV_ALIGN_CENTER, 0, 0);
     
-    /* 内存状态提示 */
+    /* 厂牌 */
     lv_obj_t *mem_hint = lv_label_create(parent);
-    lv_label_set_text(mem_hint, "内存使用率");
+    lv_label_set_text(mem_hint, "SuperKey");
     lv_obj_add_style(mem_hint, &g_ui_mgr.handles.style_small, 0);
     lv_obj_set_style_text_color(mem_hint, lv_color_make(180, 180, 180), 0);
     lv_obj_align(mem_hint, LV_ALIGN_BOTTOM_MID, 0, -10);
@@ -571,21 +571,21 @@ static void build_right_network_panel(lv_obj_t *parent)
     
     /* 上传速度 */
     g_ui_mgr.handles.group2_network.net_upload = lv_label_create(parent);
-    lv_label_set_text(g_ui_mgr.handles.group2_network.net_upload, "↑ 1.25MB/s");
+    lv_label_set_text(g_ui_mgr.handles.group2_network.net_upload, "↑ -.--MB/s");
     lv_obj_add_style(g_ui_mgr.handles.group2_network.net_upload, &g_ui_mgr.handles.style_medium, 0);
     lv_obj_set_style_text_color(g_ui_mgr.handles.group2_network.net_upload, lv_color_make(255, 100, 100), 0);
     lv_obj_align_to(g_ui_mgr.handles.group2_network.net_upload, g_ui_mgr.handles.group2_network.network_title, LV_ALIGN_OUT_BOTTOM_MID, 0, 15);
     
     /* 下载速度 */
     g_ui_mgr.handles.group2_network.net_download = lv_label_create(parent);
-    lv_label_set_text(g_ui_mgr.handles.group2_network.net_download, "↓ 8.67MB/s");
+    lv_label_set_text(g_ui_mgr.handles.group2_network.net_download, "↓ -.--MB/s");
     lv_obj_add_style(g_ui_mgr.handles.group2_network.net_download, &g_ui_mgr.handles.style_medium, 0);
     lv_obj_set_style_text_color(g_ui_mgr.handles.group2_network.net_download, lv_color_make(100, 255, 100), 0);
     lv_obj_align_to(g_ui_mgr.handles.group2_network.net_download, g_ui_mgr.handles.group2_network.net_upload, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
     
     /* 网络状态 */
     g_ui_mgr.handles.group2_network.net_status = lv_label_create(parent);
-    lv_label_set_text(g_ui_mgr.handles.group2_network.net_status, "在线");
+    lv_label_set_text(g_ui_mgr.handles.group2_network.net_status, "等待数据");
     lv_obj_add_style(g_ui_mgr.handles.group2_network.net_status, &g_ui_mgr.handles.style_small, 0);
     lv_obj_set_style_text_color(g_ui_mgr.handles.group2_network.net_status, lv_color_make(120, 120, 120), 0);
     lv_obj_align(g_ui_mgr.handles.group2_network.net_status, LV_ALIGN_BOTTOM_MID, 0, 0);
@@ -1575,14 +1575,14 @@ int screen_ui_update_sensor_display(void)
         rt_tick_t now = rt_tick_get();
         if ((now - data.timestamp) <= rt_tick_from_millisecond(20000)) {
             char sensor_str[32];
-            rt_snprintf(sensor_str, sizeof(sensor_str), "传感器: %.1f°C %.0f%%",
+            rt_snprintf(sensor_str, sizeof(sensor_str), "当前: %.1f°C %.0f%%",
                       data.temperature_c, data.humidity_rh);
             lv_label_set_text(g_ui_mgr.handles.group1_weather.sensor_label, sensor_str);
         } else {
-            lv_label_set_text(g_ui_mgr.handles.group1_weather.sensor_label, "传感器: --°C --%");
+            lv_label_set_text(g_ui_mgr.handles.group1_weather.sensor_label, "当前: --°C --%");
         }
     } else {
-        lv_label_set_text(g_ui_mgr.handles.group1_weather.sensor_label, "传感器: --°C --%");
+        lv_label_set_text(g_ui_mgr.handles.group1_weather.sensor_label, "当前: --°C --%");
     }
 
     return 0;

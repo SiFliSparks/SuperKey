@@ -55,14 +55,7 @@ static void event_processing_thread(void *parameter)
     uint32_t consecutive_errors = 0;
     uint32_t processed_events = 0;
     
-    rt_kprintf("[EventBus] Processing thread started (priority %d, LED-optimized)\n", EVENT_THREAD_PRIORITY);
-    
     while (g_event_bus.running) {
-        // 检查停止信号
-        if (rt_sem_take(g_event_bus.stop_sem, RT_WAITING_NO) == RT_EOK) {
-            rt_kprintf("[EventBus] Stop signal received\n");
-            break;
-        }
         
         rt_err_t result = rt_mq_recv(g_event_bus.event_queue, &event, sizeof(event_t), 100);
         
@@ -72,9 +65,6 @@ static void event_processing_thread(void *parameter)
             
             // 为LED反馈事件创建特殊处理路径
             if (event.type == EVENT_LED_FEEDBACK_REQUEST) {
-                rt_kprintf("[EventBus] Processing LED feedback event (high priority)\n");
-                
-                // LED事件使用更长的超时时间和重试机制
                 int retry_count = 3;
                 bool handled = false;
                 
@@ -97,11 +87,9 @@ static void event_processing_thread(void *parameter)
                             }
                             
                             if (sub->subscription.handler) {
-                                rt_kprintf("[EventBus] Calling LED handler\n");
                                 int ret = sub->subscription.handler(&event, sub->subscription.user_data);
                                 if (ret == 0) {
                                     handled = true;
-                                    rt_kprintf("[EventBus] LED event handled successfully\n");
                                 }
                             }
                         }
@@ -111,7 +99,6 @@ static void event_processing_thread(void *parameter)
                         
                     } else {
                         retry_count--;
-                        rt_kprintf("[EventBus] LED event lock failed, retrying (%d attempts left)\n", retry_count);
                         
                         if (retry_count > 0) {
                             rt_thread_mdelay(50); // 短暂等待后重试
@@ -123,11 +110,9 @@ static void event_processing_thread(void *parameter)
                     // 所有重试都失败，将事件重新入队一次
                     static uint8_t led_requeue_count = 0;
                     if (led_requeue_count < 2) {
-                        rt_kprintf("[EventBus] LED event failed all retries, re-queuing (attempt %d)\n", led_requeue_count + 1);
                         rt_mq_send(g_event_bus.event_queue, &event, sizeof(event_t));
                         led_requeue_count++;
                     } else {
-                        rt_kprintf("[EventBus] LED event dropped after max retries\n");
                         update_stats(&g_event_bus.dropped_count);
                         led_requeue_count = 0; // 重置计数器
                     }
@@ -170,7 +155,6 @@ static void event_processing_thread(void *parameter)
                     }
                     
                 } else {
-                    rt_kprintf("[EventBus] Failed to acquire subscribers lock for event 0x%04X, dropping\n", event.type);
                     update_stats(&g_event_bus.dropped_count);
                 }
             }
@@ -187,29 +171,22 @@ static void event_processing_thread(void *parameter)
             
         } else {
             consecutive_errors++;
-            rt_kprintf("[EventBus] Message queue error: %d (consecutive: %u)\n", result, consecutive_errors);
-            
-            // 如果连续错误过多，进入恢复模式
             if (consecutive_errors > 10) {
-                rt_kprintf("[EventBus] Too many consecutive errors, entering recovery mode\n");
                 event_bus_emergency_cleanup();
-                rt_thread_mdelay(1000);  // 等待1秒再继续
+                rt_thread_mdelay(1000);
                 consecutive_errors = 0;
             } else {
                 rt_thread_mdelay(10);
             }
         }
     }
-    
-    rt_kprintf("[EventBus] Processing thread stopped (processed %u events)\n", processed_events);
 }
 
 /* 健康检查函数 */
 static void event_bus_health_check(void)
 {
     rt_tick_t now = rt_tick_get();
-    
-    // 每30秒执行一次完整健康检查
+
     if ((now - g_event_bus.last_health_check) < rt_tick_from_millisecond(30000)) {
         return;
     }
@@ -223,7 +200,6 @@ static void event_bus_health_check(void)
         uint32_t usage_percent = (used * 100) / mq->max_msgs;
         
         if (usage_percent > 80) {
-            rt_kprintf("[EventBus] Queue usage high: %u%%, cleaning old events\n", usage_percent);
             
             // 清理一些旧事件
             event_t dummy_event;
@@ -234,7 +210,6 @@ static void event_bus_health_check(void)
             }
             
             if (cleaned > 0) {
-                rt_kprintf("[EventBus] Cleaned %d old events\n", cleaned);
                 update_stats(&g_event_bus.dropped_count);
             }
         }
@@ -246,7 +221,6 @@ static void event_bus_health_check(void)
         if (total_events > 0) {
             uint32_t error_rate = (g_event_bus.error_count * 100) / total_events;
             if (error_rate > 5) {
-                rt_kprintf("[EventBus] High error rate: %u%%, resetting error count\n", error_rate);
                 g_event_bus.error_count = 0;  // 重置错误计数
             }
         }
@@ -256,7 +230,6 @@ static void event_bus_health_check(void)
 /* 紧急清理函数 */
 static void event_bus_emergency_cleanup(void)
 {
-    rt_kprintf("[EventBus] Performing emergency cleanup...\n");
     
     // 清空消息队列
     if (g_event_bus.event_queue) {
@@ -268,15 +241,12 @@ static void event_bus_emergency_cleanup(void)
         }
         
         if (cleaned > 0) {
-            rt_kprintf("[EventBus] Emergency: cleaned %d events from queue\n", cleaned);
             update_stats(&g_event_bus.dropped_count);
         }
     }
     
     // 重置错误计数
     g_event_bus.error_count = 0;
-    
-    rt_kprintf("[EventBus] Emergency cleanup completed\n");
 }
 
 static int find_subscriber_slot(void)
@@ -314,11 +284,8 @@ static void update_stats(uint32_t *counter)
 int event_bus_init(void)
 {
     if (g_event_bus.initialized) {
-        rt_kprintf("[EventBus] Already initialized\n");
         return 0;
     }
-    
-    rt_kprintf("[EventBus] Initializing event bus system (enhanced)...\n");
     
     memset(&g_event_bus, 0, sizeof(g_event_bus));
     
@@ -328,14 +295,12 @@ int event_bus_init(void)
                                           EVENT_QUEUE_SIZE,
                                           RT_IPC_FLAG_PRIO);
     if (!g_event_bus.event_queue) {
-        rt_kprintf("[EventBus] Failed to create event queue\n");
         return -RT_ENOMEM;
     }
     
     // 创建订阅者锁
     g_event_bus.subscribers_lock = rt_mutex_create("event_sub_lock", RT_IPC_FLAG_PRIO);
     if (!g_event_bus.subscribers_lock) {
-        rt_kprintf("[EventBus] Failed to create subscribers lock\n");
         rt_mq_delete(g_event_bus.event_queue);
         return -RT_ENOMEM;
     }
@@ -343,7 +308,6 @@ int event_bus_init(void)
     // 创建统计锁
     g_event_bus.stats_lock = rt_mutex_create("event_stats_lock", RT_IPC_FLAG_PRIO);
     if (!g_event_bus.stats_lock) {
-        rt_kprintf("[EventBus] Failed to create stats lock\n");
         rt_mutex_delete(g_event_bus.subscribers_lock);
         rt_mq_delete(g_event_bus.event_queue);
         return -RT_ENOMEM;
@@ -352,7 +316,6 @@ int event_bus_init(void)
     // 创建停止信号量
     g_event_bus.stop_sem = rt_sem_create("event_stop", 0, RT_IPC_FLAG_PRIO);
     if (!g_event_bus.stop_sem) {
-        rt_kprintf("[EventBus] Failed to create stop semaphore\n");
         rt_mutex_delete(g_event_bus.stats_lock);
         rt_mutex_delete(g_event_bus.subscribers_lock);
         rt_mq_delete(g_event_bus.event_queue);
@@ -367,7 +330,6 @@ int event_bus_init(void)
                                                EVENT_THREAD_PRIORITY,
                                                10);
     if (!g_event_bus.event_thread) {
-        rt_kprintf("[EventBus] Failed to create event processing thread\n");
         rt_sem_delete(g_event_bus.stop_sem);
         rt_mutex_delete(g_event_bus.stats_lock);
         rt_mutex_delete(g_event_bus.subscribers_lock);
@@ -385,10 +347,6 @@ int event_bus_init(void)
     
     g_event_bus.initialized = true;
     
-    rt_kprintf("[EventBus] Event bus initialized successfully (enhanced)\n");
-    rt_kprintf("[EventBus] Queue size: %d, Max subscribers: %d, Thread priority: %d\n", 
-              EVENT_QUEUE_SIZE, MAX_SUBSCRIBERS, EVENT_THREAD_PRIORITY);
-    
     return 0;
 }
 
@@ -398,8 +356,6 @@ int event_bus_deinit(void)
     if (!g_event_bus.initialized) {
         return 0;
     }
-    
-    rt_kprintf("[EventBus] Deinitializing event bus...\n");
     
     // 停止线程
     g_event_bus.running = false;
@@ -434,13 +390,7 @@ int event_bus_deinit(void)
         rt_mq_delete(g_event_bus.event_queue);
         g_event_bus.event_queue = NULL;
     }
-    
-    rt_kprintf("[EventBus] Final stats - Published: %u, Processed: %u, Dropped: %u, Errors: %u\n",
-              g_event_bus.published_count, g_event_bus.processed_count, 
-              g_event_bus.dropped_count, g_event_bus.error_count);
-    
     g_event_bus.initialized = false;
-    rt_kprintf("[EventBus] Event bus deinitialized\n");
     
     return 0;
 }
@@ -454,9 +404,6 @@ int event_bus_publish(event_type_t type, const void *event_data, size_t data_siz
     }
     
     if (data_size > sizeof(((event_t*)0)->data)) {
-        if (!is_in_interrupt_context()) {
-            rt_kprintf("[EventBus] Event data too large: %zu bytes\n", data_size);
-        }
         return -RT_EINVAL;
     }
     
@@ -491,7 +438,6 @@ int event_bus_publish(event_type_t type, const void *event_data, size_t data_siz
             update_stats(&g_event_bus.published_count);
         } else {
             update_stats(&g_event_bus.dropped_count);
-            rt_kprintf("[EventBus] Failed to publish event 0x%04X: %d\n", type, result);
         }
     }
     
@@ -523,7 +469,6 @@ int event_bus_publish_sync(event_type_t type, const void *event_data, size_t dat
     
     // 使用短超时获取锁
     if (rt_mutex_take(g_event_bus.subscribers_lock, 1000) != RT_EOK) {
-        rt_kprintf("[EventBus] Failed to acquire lock for sync publish\n");
         return -RT_ETIMEOUT;
     }
     
@@ -571,21 +516,18 @@ int event_bus_subscribe(event_type_t event_type, event_handler_t handler,
     
     // 使用短超时避免死锁
     if (rt_mutex_take(g_event_bus.subscribers_lock, 1000) != RT_EOK) {
-        rt_kprintf("[EventBus] Failed to acquire lock for subscription\n");
         return -RT_ETIMEOUT;
     }
     
     int existing = find_subscriber(event_type, handler);
     if (existing >= 0) {
         rt_mutex_release(g_event_bus.subscribers_lock);
-        rt_kprintf("[EventBus] Already subscribed to event 0x%04X\n", event_type);
         return -RT_EBUSY;
     }
     
     int slot = find_subscriber_slot();
     if (slot < 0) {
         rt_mutex_release(g_event_bus.subscribers_lock);
-        rt_kprintf("[EventBus] No free subscriber slots\n");
         return -RT_EFULL;
     }
     
@@ -598,8 +540,6 @@ int event_bus_subscribe(event_type_t event_type, event_handler_t handler,
     sub->active = true;
     
     rt_mutex_release(g_event_bus.subscribers_lock);
-    
-    rt_kprintf("[EventBus] Subscribed to event 0x%04X (slot %d)\n", event_type, slot);
     return 0;
 }
 
@@ -618,7 +558,6 @@ int event_bus_unsubscribe(event_type_t event_type, event_handler_t handler)
     if (slot >= 0) {
         g_event_bus.subscribers[slot].active = false;
         memset(&g_event_bus.subscribers[slot], 0, sizeof(subscriber_info_t));
-        rt_kprintf("[EventBus] Unsubscribed from event 0x%04X (slot %d)\n", event_type, slot);
     }
     
     rt_mutex_release(g_event_bus.subscribers_lock);
@@ -640,8 +579,6 @@ int event_bus_enable_subscription(event_type_t event_type, event_handler_t handl
     int slot = find_subscriber(event_type, handler);
     if (slot >= 0) {
         g_event_bus.subscribers[slot].subscription.enabled = enable;
-        rt_kprintf("[EventBus] %s subscription for event 0x%04X\n", 
-                  enable ? "Enabled" : "Disabled", event_type);
     }
     
     rt_mutex_release(g_event_bus.subscribers_lock);
@@ -693,7 +630,6 @@ int event_bus_cleanup(void)
     }
     
     if (cleaned > 0) {
-        rt_kprintf("[EventBus] Cleaned %d pending events\n", cleaned);
         update_stats(&g_event_bus.dropped_count);
     }
     
@@ -758,7 +694,6 @@ int event_bus_publish_error(int error_code, const char *error_msg, const char *m
 int event_bus_publish_led_feedback(int led_index, uint32_t color, uint32_t duration_ms)
 {
     if (!g_event_bus.initialized || !g_event_bus.running) {
-        rt_kprintf("[EventBus] LED feedback failed: bus not initialized\n");
         return -RT_ERROR;
     }
     
@@ -775,14 +710,10 @@ int event_bus_publish_led_feedback(int led_index, uint32_t color, uint32_t durat
     event.source_module_id = MODULE_ID_LED;
     event.data.led = led_data;
     
-    rt_kprintf("[EventBus] Publishing LED feedback: led=%d, color=0x%06X, duration=%ums\n", 
-               led_index, color, duration_ms);
-    
     // 使用非阻塞发送，但检查队列状态
     rt_err_t result = rt_mq_send(g_event_bus.event_queue, &event, sizeof(event_t));
     
     if (result == RT_EOK) {
-        rt_kprintf("[EventBus] LED event queued successfully\n");
         // 在中断中不能安全更新统计，粗略计数
         if (!is_in_interrupt_context()) {
             update_stats(&g_event_bus.published_count);
@@ -790,7 +721,6 @@ int event_bus_publish_led_feedback(int led_index, uint32_t color, uint32_t durat
             g_event_bus.published_count++;
         }
     } else {
-        rt_kprintf("[EventBus] LED event queue failed: %d\n", result);
         if (!is_in_interrupt_context()) {
             update_stats(&g_event_bus.dropped_count);
         } else {
@@ -805,7 +735,6 @@ int event_bus_publish_led_feedback(int led_index, uint32_t color, uint32_t durat
 int event_bus_enable_health_monitor(bool enable)
 {
     g_event_bus.health_monitor_enabled = enable;
-    rt_kprintf("[EventBus] Health monitor %s\n", enable ? "enabled" : "disabled");
     return 0;
 }
 
@@ -828,8 +757,6 @@ int event_bus_reset_stats(void)
         g_event_bus.dropped_count = 0;
         g_event_bus.error_count = 0;
         rt_mutex_release(g_event_bus.stats_lock);
-        
-        rt_kprintf("[EventBus] Statistics reset\n");
         return 0;
     }
     

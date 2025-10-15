@@ -50,8 +50,6 @@ int data_manager_update_weather(const weather_data_t *data)
     g_data_store.weather_update_tick = rt_tick_get();
     
     rt_mutex_release(g_data_store.lock);
-    
-    rt_kprintf("[DataMgr] Weather data updated and stored (UI will update via timer)\n");
     return 0;
 }
 
@@ -67,8 +65,6 @@ int data_manager_update_stock(const stock_data_t *data)
     g_data_store.stock_update_tick = rt_tick_get();
     
     rt_mutex_release(g_data_store.lock);
-    
-    rt_kprintf("[DataMgr] Stock data updated and stored (UI will update via timer)\n");
     return 0;
 }
 
@@ -84,8 +80,6 @@ int data_manager_update_system(const system_monitor_data_t *data)
     g_data_store.system_update_tick = rt_tick_get();
     
     rt_mutex_release(g_data_store.lock);
-    
-    rt_kprintf("[DataMgr] System data updated and stored (UI will update via main thread timer)\n");
     return 0;
 }
 
@@ -99,8 +93,6 @@ int data_manager_get_weather(weather_data_t *data)
     
     if (is_data_expired(g_data_store.weather_update_tick)) {
         g_data_store.weather.valid = false;
-        rt_kprintf("[DataMgr] Weather data expired (%us old), marked as invalid\n", 
-                  get_data_age_seconds(g_data_store.weather_update_tick));
     }
     
     *data = g_data_store.weather;
@@ -119,8 +111,6 @@ int data_manager_get_stock(stock_data_t *data)
     
     if (is_data_expired(g_data_store.stock_update_tick)) {
         g_data_store.stock.valid = false;
-        rt_kprintf("[DataMgr] Stock data expired (%us old), marked as invalid\n", 
-                  get_data_age_seconds(g_data_store.stock_update_tick));
     }
     
     *data = g_data_store.stock;
@@ -139,8 +129,6 @@ int data_manager_get_system(system_monitor_data_t *data)
     
     if (is_data_expired(g_data_store.system_update_tick)) {
         g_data_store.system.valid = false;
-        rt_kprintf("[DataMgr] System data expired (%us old), marked as invalid\n", 
-                  get_data_age_seconds(g_data_store.system_update_tick));
     }
     
     *data = g_data_store.system;
@@ -163,25 +151,20 @@ int data_manager_cleanup_expired_data(void)
     if (is_data_expired(g_data_store.weather_update_tick) && g_data_store.weather.valid) {
         g_data_store.weather.valid = false;
         cleaned++;
-        rt_kprintf("[DataMgr] Cleaned expired weather data\n");
     }
     
     if (is_data_expired(g_data_store.stock_update_tick) && g_data_store.stock.valid) {
         g_data_store.stock.valid = false;
         cleaned++;
-        rt_kprintf("[DataMgr] Cleaned expired stock data\n");
     }
     
     if (is_data_expired(g_data_store.system_update_tick) && g_data_store.system.valid) {
         g_data_store.system.valid = false;
         cleaned++;
-        rt_kprintf("[DataMgr] Cleaned expired system data\n");
     }
     
     if (cleaned > 0) {
         g_data_store.cleanup_count += cleaned;
-        rt_kprintf("[DataMgr] Cleanup completed: %d entries cleaned (total: %u)\n", 
-                  cleaned, g_data_store.cleanup_count);
     }
     
     g_data_store.last_cleanup_tick = now;
@@ -211,8 +194,6 @@ int data_manager_reset_all_data(void)
     g_data_store.system_update_tick = 0;
     
     rt_mutex_release(g_data_store.lock);
-    
-    rt_kprintf("[DataMgr] All data reset\n");
     return 0;
 }
 
@@ -227,14 +208,6 @@ int data_manager_get_data_status(char *status_buf, size_t buf_size)
     uint32_t weather_age = get_data_age_seconds(g_data_store.weather_update_tick);
     uint32_t stock_age = get_data_age_seconds(g_data_store.stock_update_tick);
     uint32_t system_age = get_data_age_seconds(g_data_store.system_update_tick);
-    
-    rt_snprintf(status_buf, buf_size,
-               "Weather: %s (%us ago), Stock: %s (%us ago), System: %s (%us ago), Cleanups: %u",
-               g_data_store.weather.valid ? "Valid" : "Invalid", weather_age,
-               g_data_store.stock.valid ? "Valid" : "Invalid", stock_age,
-               g_data_store.system.valid ? "Valid" : "Invalid", system_age,
-               g_data_store.cleanup_count);
-    
     rt_mutex_release(g_data_store.lock);
     return 0;
 }
@@ -288,16 +261,10 @@ static int data_manager_weather_event_handler(const event_t *event, void *user_d
     if (event->type == EVENT_DATA_WEATHER_UPDATED) {
         const weather_data_t *weather = &event->data.weather.weather;
         
-        rt_kprintf("[DataMgr] Received weather event from module 0x%04X\n", 
-                  event->source_module_id);
-        
         rt_mutex_take(g_data_store.lock, RT_WAITING_FOREVER);
         g_data_store.weather = *weather;
         g_data_store.weather_update_tick = rt_tick_get();
         rt_mutex_release(g_data_store.lock);
-        
-        rt_kprintf("[DataMgr] Weather data stored: %s %.1f°C\n", 
-                  weather->city, weather->temperature);
         
         return 0;
     }
@@ -312,16 +279,10 @@ static int data_manager_stock_event_handler(const event_t *event, void *user_dat
     if (event->type == EVENT_DATA_STOCK_UPDATED) {
         const stock_data_t *stock = &event->data.stock.stock;
         
-        rt_kprintf("[DataMgr] Received stock event from module 0x%04X\n", 
-                  event->source_module_id);
-        
         rt_mutex_take(g_data_store.lock, RT_WAITING_FOREVER);
         g_data_store.stock = *stock;
         g_data_store.stock_update_tick = rt_tick_get();
         rt_mutex_release(g_data_store.lock);
-        
-        rt_kprintf("[DataMgr] Stock data stored: %s %.2f\n", 
-                  stock->name, stock->current_price);
         
         return 0;
     }
@@ -335,18 +296,10 @@ static int data_manager_system_event_handler(const event_t *event, void *user_da
     
     if (event->type == EVENT_DATA_SYSTEM_UPDATED) {
         const system_monitor_data_t *system = &event->data.system.system;
-        
-        rt_kprintf("[DataMgr] Received system event from module 0x%04X\n", 
-                  event->source_module_id);
-        
         rt_mutex_take(g_data_store.lock, RT_WAITING_FOREVER);
         g_data_store.system = *system;
         g_data_store.system_update_tick = rt_tick_get();
         rt_mutex_release(g_data_store.lock);
-        
-        rt_kprintf("[DataMgr] System data stored: CPU %.1f%% GPU %.1f%%\n", 
-                  system->cpu_usage, system->gpu_usage);
-        
         return 0;
     }
     
@@ -386,7 +339,6 @@ int data_manager_init(void)
                        NULL, EVENT_PRIORITY_NORMAL);
     
     g_data_store.initialized = true;
-    rt_kprintf("[DataMgr] Data manager initialized with event subscriptions\n");
     return 0;
 }
 
@@ -406,6 +358,5 @@ int data_manager_deinit(void)
     }
     
     g_data_store.initialized = false;
-    rt_kprintf("[DataMgr] Data manager deinitialized with event unsubscriptions\n");
     return 0;
 }

@@ -30,18 +30,33 @@ static int screen_encoder_event_handler(const event_t *event, void *user_data)
         
         // 只在L1层级时进行屏幕组切换
         if (current_level == SCREEN_LEVEL_1) {
-            if (encoder_data->delta > 0) {
-                // 顺时针：下一组 (修正方向) - 确保循环所有组
+            // 处理原始 delta，支持多步翻页
+            int32_t steps = encoder_data->delta;
+            
+            if (steps != 0) {
                 screen_group_t current = screen_core_get_current_group();
-                screen_group_t next = (current + 1) % SCREEN_GROUP_MAX;  // 包括GROUP_4
-                screen_core_post_switch_group(next, false);
-                rt_kprintf("[ScreenEncoder] Clockwise: Group %d -> %d\n", current, next);
-            } else if (encoder_data->delta < 0) {
-                // 逆时针：上一组 (修正方向) - 确保循环所有组
-                screen_group_t current = screen_core_get_current_group();
-                screen_group_t prev = (current == 0) ? (SCREEN_GROUP_MAX - 1) : (current - 1);
-                screen_core_post_switch_group(prev, false);
-                rt_kprintf("[ScreenEncoder] Counter-clockwise: Group %d -> %d\n", current, prev);
+                screen_group_t target;
+                
+                // 计算目标组（支持跨多组跳转）
+                if (steps > 0) {
+                    // 顺时针：向后翻 steps 页
+                    target = (current + steps) % SCREEN_GROUP_MAX;
+                    rt_kprintf("[ScreenEncoder] Clockwise %d steps: Group %d -> %d\n", 
+                               steps, current, target);
+                } else {
+                    // 逆时针：向前翻 |steps| 页
+                    // 处理负数取模
+                    int32_t new_group = (int32_t)current + steps;  // steps 本身是负数
+                    while (new_group < 0) {
+                        new_group += SCREEN_GROUP_MAX;
+                    }
+                    target = new_group % SCREEN_GROUP_MAX;
+                    rt_kprintf("[ScreenEncoder] Counter-clockwise %d steps: Group %d -> %d\n", 
+                               -steps, current, target);
+                }
+                
+                // 发布切换请求
+                screen_core_post_switch_group(target, false);
             }
         }
         
@@ -50,6 +65,7 @@ static int screen_encoder_event_handler(const event_t *event, void *user_data)
     
     return -1;
 }
+
 
 
 static int screen_data_event_handler(const event_t *event, void *user_data)
@@ -87,34 +103,24 @@ static int screen_data_event_handler(const event_t *event, void *user_data)
 
 void create_triple_screen_display(void)
 {
-    if (g_screen_system_initialized) {
-        rt_kprintf("[Screen] System already initialized\n");
-        return;
-    }
-    
-    rt_kprintf("[Screen] Initializing thread-safe screen system...\n");
     g_system_start_time = rt_tick_get();
     
       if (screen_core_init() != 0) {
-        rt_kprintf("[Screen] ERROR: Failed to initialize screen core\n");
         return;
     }
     
     if (screen_ui_manager_init() != 0) {
-        rt_kprintf("[Screen] ERROR: Failed to initialize UI manager\n");
         screen_core_deinit();
         return;
     }
     
     if (screen_timer_manager_init() != 0) {
-        rt_kprintf("[Screen] ERROR: Failed to initialize timer manager\n");
         screen_ui_manager_deinit();
         screen_core_deinit();
         return;
     }
     
     if (screen_context_init_all() != 0) {
-        rt_kprintf("[Screen] Warning: Failed to initialize screen contexts\n");
     }
     
     event_bus_subscribe(EVENT_ENCODER_ROTATED, screen_encoder_event_handler, 
@@ -136,31 +142,17 @@ void create_triple_screen_display(void)
         encoder_controller_set_sensitivity(1);
         
         if (encoder_controller_start_polling() == 0) {
-            rt_kprintf("[Screen] Encoder configured for screen switching\n");
         }
     }
 
     if (screen_ui_build_group1() != 0) {
-        rt_kprintf("[Screen] ERROR: Failed to build initial UI\n");
         cleanup_triple_screen_display();
         return;
     }
-
     screen_timer_start_group1_timers();
-
     screen_context_activate_for_group(SCREEN_GROUP_1);
-    
     g_screen_system_initialized = true;
-    
     rt_tick_t init_time = rt_tick_get() - g_system_start_time;
-    rt_kprintf("[Screen] ✅ Thread-safe screen system initialized in %ums\n", 
-              (uint32_t)(init_time * 1000 / RT_TICK_PER_SECOND));
-    rt_kprintf("[Screen] Key improvements:\n");
-    rt_kprintf("[Screen]   - Timer callbacks only post messages (no direct LVGL access)\n");
-    rt_kprintf("[Screen]   - All UI operations in GUI thread only\n");
-    rt_kprintf("[Screen]   - Fixed data expiry logic (no more 0xFFFFFFFF bug)\n");
-    rt_kprintf("[Screen]   - Message-driven architecture for thread safety\n");
-    rt_kprintf("[Screen]   - Modular design for easier maintenance\n");
 }
 
 void cleanup_triple_screen_display(void)
@@ -168,8 +160,6 @@ void cleanup_triple_screen_display(void)
     if (!g_screen_system_initialized) {
         return;
     }
-    
-    rt_kprintf("[Screen] Cleaning up thread-safe screen system...\n");
 
     event_bus_unsubscribe(EVENT_ENCODER_ROTATED, screen_encoder_event_handler);
     event_bus_unsubscribe(EVENT_DATA_WEATHER_UPDATED, screen_data_event_handler);
@@ -186,7 +176,6 @@ void cleanup_triple_screen_display(void)
     screen_core_deinit();
     
     g_screen_system_initialized = false;
-    rt_kprintf("[Screen] Thread-safe screen system cleaned up\n");
 }
 
 int screen_switch_group(screen_group_t group)
@@ -215,8 +204,6 @@ void screen_next_group(void)
     
     screen_group_t current = screen_core_get_current_group();
     screen_group_t next = (current + 1) % SCREEN_GROUP_MAX;
-        rt_kprintf("[ScreenEncoder] DEBUG: current=%d, next=%d, MAX=%d\n", 
-               current, next, SCREEN_GROUP_MAX);
     screen_core_post_switch_group(next, false);
 }
 
@@ -239,12 +226,8 @@ void screen_process_switch_request(void)
 int screen_update_weather(const weather_data_t *data)
 {
     if (!data) {
-        rt_kprintf("[Screen] Invalid weather data\n");
         return -1;
     }
-    
-    rt_kprintf("[Screen] Weather data received: %s %.1f°C %s\n",
-              data->city, data->temperature, data->weather);
     
     int ret = data_manager_update_weather(data);
     if (ret == 0) {
@@ -252,7 +235,6 @@ int screen_update_weather(const weather_data_t *data)
         event_data_weather_t weather_event = { .weather = *data };
         event_bus_publish(EVENT_DATA_WEATHER_UPDATED, &weather_event, sizeof(weather_event),
                          EVENT_PRIORITY_NORMAL, MODULE_ID_SERIAL_COMM);
-        rt_kprintf("[Screen] Weather data updated via data manager\n");
     }
     
     return ret;
@@ -262,9 +244,6 @@ int screen_update_stock(const stock_data_t *data)
 {
     if (!data) return -1;
     
-    rt_kprintf("[Screen] Stock data received: %s %.2f %+.2f\n",
-              data->name, data->current_price, data->change_value);
-    
     // 通过data_manager更新
     int ret = data_manager_update_stock(data);
     if (ret == 0) {
@@ -272,7 +251,6 @@ int screen_update_stock(const stock_data_t *data)
         event_data_stock_t stock_event = { .stock = *data };
         event_bus_publish(EVENT_DATA_STOCK_UPDATED, &stock_event, sizeof(stock_event),
                          EVENT_PRIORITY_NORMAL, MODULE_ID_SERIAL_COMM);
-        rt_kprintf("[Screen] Stock data updated via data manager\n");
     }
     
     return ret;
@@ -282,9 +260,6 @@ int screen_update_system_monitor(const system_monitor_data_t *data)
 {
     if (!data) return -1;
     
-    rt_kprintf("[Screen] System monitor data received: CPU=%.1f%% GPU=%.1f%% RAM=%.1f%%\n",
-              data->cpu_usage, data->gpu_usage, data->ram_usage);
-    
     // 通过data_manager更新
     int ret = data_manager_update_system(data);
     if (ret == 0) {
@@ -292,7 +267,6 @@ int screen_update_system_monitor(const system_monitor_data_t *data)
         event_data_system_t system_event = { .system = *data };
         event_bus_publish(EVENT_DATA_SYSTEM_UPDATED, &system_event, sizeof(system_event),
                          EVENT_PRIORITY_NORMAL, MODULE_ID_SERIAL_COMM);
-        rt_kprintf("[Screen] System data updated via data manager\n");
     }
     
     return ret;
@@ -499,26 +473,5 @@ int screen_enter_level2_auto(screen_group_t from_l1_group)
     }
     
     return screen_enter_level2(l2_group, l2_page);
-}
-
-/* 编码器集成 - 简化版本 */
-void screen_register_encoder_callback(void)
-{
-    rt_kprintf("[Screen] Encoder callback registration handled by create_triple_screen_display()\n");
-}
-
-void screen_unregister_encoder_callback(void)
-{
-    rt_kprintf("[Screen] Encoder callback unregistration handled by cleanup_triple_screen_display()\n");
-}
-
-/**********************
- *   状态查询和调试
- **********************/
-
-const screen_hierarchy_context_t* screen_get_hierarchy_context(void)
-{
-    /* 这个函数在新架构中需要重新实现，暂时返回NULL */
-    return NULL;
 }
 

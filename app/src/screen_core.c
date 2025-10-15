@@ -34,7 +34,6 @@ int screen_core_init(void)
                                        MESSAGE_QUEUE_SIZE,
                                        RT_IPC_FLAG_PRIO);
     if (!g_core.message_queue) {
-        rt_kprintf("[ScreenCore] Failed to create message queue\n");
         return -RT_ENOMEM;
     }
     
@@ -43,7 +42,6 @@ int screen_core_init(void)
     if (!g_core.state_lock) {
         rt_mq_delete(g_core.message_queue);
         g_core.message_queue = NULL;
-        rt_kprintf("[ScreenCore] Failed to create state lock\n");
         return -RT_ENOMEM;
     }
     
@@ -57,9 +55,6 @@ int screen_core_init(void)
     g_core.messages_processed = 0;
     g_core.switch_count = 0;
     g_core.last_cleanup_time = rt_tick_get();
-    
-    rt_kprintf("[ScreenCore] Core initialized with %d-message queue\n", MESSAGE_QUEUE_SIZE);
-    rt_kprintf("[ScreenCore] Thread-safe message-based UI updates enabled\n");
     
     return 0;
 }
@@ -75,9 +70,6 @@ int screen_core_deinit(void)
         rt_mutex_delete(g_core.state_lock);
         g_core.state_lock = NULL;
     }
-    
-    rt_kprintf("[ScreenCore] Core deinitialized. Stats: %u messages, %u switches\n",
-              g_core.messages_processed, g_core.switch_count);
     
     return 0;
 }
@@ -97,7 +89,6 @@ int screen_core_post_switch_group(screen_group_t target_group, bool force)
     
     rt_err_t result = rt_mq_send(g_core.message_queue, &msg, sizeof(msg));
     if (result != RT_EOK) {
-        rt_kprintf("[ScreenCore] Failed to post switch message: %d\n", result);
         return -RT_ERROR;
     }
     
@@ -118,7 +109,6 @@ int screen_core_post_enter_l2(screen_l2_group_t l2_group, screen_l2_page_t l2_pa
     
     rt_err_t result = rt_mq_send(g_core.message_queue, &msg, sizeof(msg));
     if (result != RT_EOK) {
-        rt_kprintf("[ScreenCore] Failed to post L2 enter message: %d\n", result);
         return -RT_ERROR;
     }
     
@@ -137,7 +127,6 @@ int screen_core_post_return_l1(void)
     
     rt_err_t result = rt_mq_send(g_core.message_queue, &msg, sizeof(msg));
     if (result != RT_EOK) {
-        rt_kprintf("[ScreenCore] Failed to post L1 return message: %d\n", result);
         return -RT_ERROR;
     }
     
@@ -279,7 +268,6 @@ int screen_core_process_messages(void)
                 break;
                 
             default:
-                rt_kprintf("[ScreenCore] Unknown message type: %d\n", msg.type);
                 break;
         }
         
@@ -305,7 +293,6 @@ static int process_update_time_message(void)
     
     // 情况2：L2层级的时间详情页面 - 新增逻辑支持数字时钟
     if (g_core.current_level == SCREEN_LEVEL_2 && g_core.l2_current_group == SCREEN_L2_TIME_GROUP) {
-        rt_kprintf("[ScreenCore] Updating L2 digital clock time\n");
         return screen_ui_update_time_display();
     }
     
@@ -469,8 +456,6 @@ static int process_switch_group_message(const screen_switch_msg_t *msg)
     g_core.switching_in_progress = true;
     rt_mutex_release(g_core.state_lock);
     
-    rt_kprintf("[ScreenCore] Processing switch to group %d\n", msg->target_group);
-    
     /* 停止当前组的定时器 */
     screen_timer_stop_all_group_timers();
     
@@ -490,11 +475,7 @@ static int process_switch_group_message(const screen_switch_msg_t *msg)
         } else if (msg->target_group == SCREEN_GROUP_2) {
             screen_timer_start_group2_timers();
         }
-        
-        rt_kprintf("[ScreenCore] Successfully switched to group %d\n", msg->target_group);
-    } else {
-        rt_kprintf("[ScreenCore] Failed to switch to group %d: %d\n", msg->target_group, ret);
-    }
+    } 
     
     rt_mutex_take(g_core.state_lock, RT_WAITING_FOREVER);
     g_core.switching_in_progress = false;
@@ -508,9 +489,6 @@ static int process_enter_l2_message(const screen_l2_enter_msg_t *msg)
     if (!msg) {
         return -RT_EINVAL;
     }
-    
-    rt_kprintf("[ScreenCore] Processing enter L2: group %d, page %d\n", 
-              msg->l2_group, msg->l2_page);
     
     /* 停止所有组定时器 */
     screen_timer_stop_all_group_timers();
@@ -528,10 +506,7 @@ static int process_enter_l2_message(const screen_l2_enter_msg_t *msg)
         // 如果进入的是时间详情L2页面，启动时钟定时器
         if (msg->l2_group == SCREEN_L2_TIME_GROUP) {
             screen_timer_start_l2_timers();
-            rt_kprintf("[ScreenCore] Started L2 clock timer for digital clock\n");
         }
-        
-        rt_kprintf("[ScreenCore] Successfully entered L2\n");
     }
     
     return ret;
@@ -539,8 +514,6 @@ static int process_enter_l2_message(const screen_l2_enter_msg_t *msg)
 
 static int process_return_l1_message(void)
 {
-    rt_kprintf("[ScreenCore] Processing return to L1\n");
-    
     rt_mutex_take(g_core.state_lock, RT_WAITING_FOREVER);
     screen_group_t l1_group = g_core.current_group;
     screen_l2_group_t previous_l2_group = g_core.l2_current_group;
@@ -557,7 +530,6 @@ static int process_return_l1_message(void)
         // 如果是从时间详情L2返回，需要停止L2专用定时器
         if (previous_l2_group == SCREEN_L2_TIME_GROUP) {
             screen_timer_stop(SCREEN_TIMER_CLOCK);
-            rt_kprintf("[ScreenCore] Stopped L2 clock timer\n");
         }
         
         /* 重启对应组的定时器 */
@@ -566,8 +538,6 @@ static int process_return_l1_message(void)
         } else if (l1_group == SCREEN_GROUP_2) {
             screen_timer_start_group2_timers();
         }
-        
-        rt_kprintf("[ScreenCore] Successfully returned to L1\n");
     }
     
     return ret;
@@ -575,14 +545,11 @@ static int process_return_l1_message(void)
 
 static int process_cleanup_message(void)
 {
-    rt_kprintf("[ScreenCore] Processing cleanup request\n");
-    
     /* 清理过期数据 */
     data_manager_cleanup_expired_data();
     
     /* 更新清理时间 */
     g_core.last_cleanup_time = rt_tick_get();
-    
     return 0;
 }
 

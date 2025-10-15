@@ -63,8 +63,6 @@ static void safe_timer_callback(void *parameter)
 // 添加新的函数：专门为L2层级启动时钟定时器
 int screen_timer_start_l2_timers(void)
 {
-    rt_kprintf("[TimerMgr] Starting L2 timers (clock for digital display)\n");
-    
     int ret = 0;
     // L2时间详情页面需要时钟定时器保持运行
     ret |= screen_timer_start(SCREEN_TIMER_CLOCK);
@@ -80,7 +78,6 @@ int screen_timer_manager_init(void)
     /* 创建互斥锁 - 只用于非ISR上下文的API */
     g_timer_mgr.lock = rt_mutex_create("timer_mgr_lock", RT_IPC_FLAG_PRIO);
     if (!g_timer_mgr.lock) {
-        rt_kprintf("[TimerMgr] Failed to create mutex\n");
         return -RT_ENOMEM;
     }
     
@@ -100,7 +97,6 @@ int screen_timer_manager_init(void)
         );
         
         if (!g_timer_mgr.timers[i]) {
-            rt_kprintf("[TimerMgr] Failed to create timer %s\n", config->name);
             /* 清理已创建的定时器 */
             for (int j = 0; j < i; j++) {
                 if (g_timer_mgr.timers[j]) {
@@ -119,8 +115,6 @@ int screen_timer_manager_init(void)
     }
     
     g_timer_mgr.initialized = true;
-    rt_kprintf("[TimerMgr] Timer manager initialized with %d ultra-safe timers\n", SCREEN_TIMER_MAX);
-    rt_kprintf("[TimerMgr] Timer callbacks use minimal synchronization for maximum compatibility\n");
     
     return 0;
 }
@@ -150,7 +144,6 @@ int screen_timer_manager_deinit(void)
     memset(g_timer_mgr.last_trigger_times, 0, sizeof(g_timer_mgr.last_trigger_times));
     
     g_timer_mgr.initialized = false;
-    rt_kprintf("[TimerMgr] Timer manager deinitialized\n");
     
     return 0;
 }
@@ -168,16 +161,10 @@ int screen_timer_start(screen_timer_type_t type)
     if (g_timer_mgr.configs[type].enabled && g_timer_mgr.timers[type]) {
         rt_err_t result = rt_timer_start(g_timer_mgr.timers[type]);
         if (result == RT_EOK) {
-            rt_kprintf("[TimerMgr] Started timer %s (interval: %ums)\n", 
-                      g_timer_mgr.configs[type].name, g_timer_mgr.configs[type].interval_ms);
         } else {
-            rt_kprintf("[TimerMgr] Failed to start timer %s: %d\n", 
-                      g_timer_mgr.configs[type].name, result);
             ret = -RT_ERROR;
         }
     } else {
-        rt_kprintf("[TimerMgr] Timer %s not enabled or not created\n", 
-                  g_timer_mgr.configs[type].name);
         ret = -RT_ERROR;
     }
     
@@ -197,13 +184,6 @@ int screen_timer_stop(screen_timer_type_t type)
     int ret = 0;
     if (g_timer_mgr.timers[type]) {
         rt_err_t result = rt_timer_stop(g_timer_mgr.timers[type]);
-        if (result == RT_EOK) {
-            rt_kprintf("[TimerMgr] Stopped timer %s\n", g_timer_mgr.configs[type].name);
-        } else {
-            rt_kprintf("[TimerMgr] Failed to stop timer %s: %d\n", 
-                      g_timer_mgr.configs[type].name, result);
-            ret = -RT_ERROR;
-        }
     }
     
     rt_mutex_release(g_timer_mgr.lock);
@@ -219,8 +199,6 @@ int screen_timer_restart(screen_timer_type_t type)
 
 int screen_timer_start_group1_timers(void)
 {
-    rt_kprintf("[TimerMgr] Starting Group 1 timers (time, weather, stock, sensor)\n");
-    
     int ret = 0;
     ret |= screen_timer_start(SCREEN_TIMER_CLOCK);
     ret |= screen_timer_start(SCREEN_TIMER_WEATHER);
@@ -232,8 +210,6 @@ int screen_timer_start_group1_timers(void)
 
 int screen_timer_start_group2_timers(void)
 {
-    rt_kprintf("[TimerMgr] Starting Group 2 timers (system monitoring)\n");
-    
     int ret = 0;
     ret |= screen_timer_start(SCREEN_TIMER_SYSTEM);
     
@@ -242,8 +218,6 @@ int screen_timer_start_group2_timers(void)
 
 int screen_timer_stop_all_group_timers(void)
 {
-    rt_kprintf("[TimerMgr] Stopping all group timers (keeping cleanup timer)\n");
-    
     int ret = 0;
     ret |= screen_timer_stop(SCREEN_TIMER_CLOCK);
     ret |= screen_timer_stop(SCREEN_TIMER_WEATHER);
@@ -286,10 +260,6 @@ int screen_timer_enable(screen_timer_type_t type, bool enabled)
     rt_mutex_take(g_timer_mgr.lock, RT_WAITING_FOREVER);
     g_timer_mgr.configs[type].enabled = enabled;
     rt_mutex_release(g_timer_mgr.lock);
-    
-    rt_kprintf("[TimerMgr] Timer %s %s\n", 
-              g_timer_mgr.configs[type].name, enabled ? "enabled" : "disabled");
-    
     return 0;
 }
 

@@ -157,20 +157,16 @@ bool hid_device_ready(void) { return g_configured; }
 static int hid_send(const uint8_t *data, uint32_t len)
 {
     if (!g_configured) {
-        rt_kprintf("[hid] Device not configured\n");
         return -1;
     }
     if (!g_hid_complete_sem) {
-        rt_kprintf("[hid] HID semaphore not initialized\n");
         return -1;
     }
     if (len > HID_EP_SIZE) {
-        rt_kprintf("[hid] report too large: %lu\n", (unsigned long)len);
         return -1;
     }
 
     if (g_hid_state == HID_STATE_BUSY) {
-        rt_kprintf("[hid] Device busy, rejecting request\n");
         return -1;
     }
 
@@ -180,26 +176,22 @@ static int hid_send(const uint8_t *data, uint32_t len)
     int ret = usbd_ep_start_write(0, HID_EP_ADDR, hid_buf, len);
     if (ret < 0) {
         g_hid_state = HID_STATE_IDLE;
-        rt_kprintf("[hid] Failed to start write: %d\n", ret);
         return ret;
     }
 
     rt_err_t sem_result = rt_sem_take(g_hid_complete_sem, rt_tick_from_millisecond(500));
     if (sem_result != RT_EOK) {
-        rt_kprintf("[hid] Semaphore timeout, forcing state reset\n");
         g_hid_state = HID_STATE_IDLE;
         
         int cleared = 0;
         while (rt_sem_take(g_hid_complete_sem, 0) == RT_EOK) {
             cleared++;
             if (cleared > 10) {
-                rt_kprintf("[hid] Emergency break: cleared %d signals\n", cleared);
                 break;
             }
         }
         
         if (cleared > 0) {
-            rt_kprintf("[hid] Cleared %d excess semaphore signals\n", cleared);
         }
         
         return -1;
@@ -211,7 +203,6 @@ static int hid_send(const uint8_t *data, uint32_t len)
 void hid_reset_semaphore(void) 
 {
     if (!g_hid_complete_sem) {
-        rt_kprintf("[hid] Semaphore not initialized\n");
         return;
     }
     
@@ -221,15 +212,12 @@ void hid_reset_semaphore(void)
     while (rt_sem_take(g_hid_complete_sem, 0) == RT_EOK) {
         cleared++;
         if (cleared > 20) {
-            rt_kprintf("[hid] Emergency: too many signals, possible corruption\n");
             break;
         }
     }
     
     if (cleared > 0) {
-        rt_kprintf("[hid] Reset completed: cleared %d signals\n", cleared);
     } else {
-        rt_kprintf("[hid] Reset completed: semaphore was clean\n");
     }
 }
 
@@ -303,7 +291,6 @@ void hid_device_init(uint8_t busid, uintptr_t reg_base)
     if (g_hid_complete_sem == RT_NULL) {
         g_hid_complete_sem = rt_sem_create("hid_sem", 0, RT_IPC_FLAG_PRIO);
         if (g_hid_complete_sem == RT_NULL) {
-            rt_kprintf("[hid] Failed to create semaphore\n");
             return;
         }
     }
@@ -319,6 +306,4 @@ void hid_device_init(uint8_t busid, uintptr_t reg_base)
     usbd_add_endpoint(busid, &ep_hid_in);
 
     usbd_initialize(busid, reg_base, usbd_event_handler);
-
-    rt_kprintf("[hid] HID combo device initialized successfully\n");
 }

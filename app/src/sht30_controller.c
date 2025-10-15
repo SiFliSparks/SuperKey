@@ -116,17 +116,11 @@ static rt_err_t sht30_read_raw(uint8_t *data)
         g_sht30.error_count++;
         return -RT_ERROR;
     }
-    
-    rt_kprintf("[SHT30] Data read: %02X %02X %02X %02X %02X %02X\n", 
-               data[0], data[1], data[2], data[3], data[4], data[5]);
-
     uint8_t temp_crc = sht30_crc8(&data[0], 2);
     uint8_t humi_crc = sht30_crc8(&data[3], 2);
 
     uint16_t temp_raw = (data[0] << 8) | data[1];
     uint16_t humi_raw = (data[3] << 8) | data[4];
-    
-    rt_kprintf("[SHT30] Raw: T=0x%04X, H=0x%04X\n", temp_raw, humi_raw);
     
     g_sht30.success_count++;
     return RT_EOK;
@@ -230,8 +224,6 @@ static void sampling_thread_entry(void *parameter)
             error_streak++;
             
             if (error_streak >= 10) {
-                rt_kprintf("[SHT30] Too many consecutive errors (%u), attempting soft reset\n", 
-                          error_streak);
                 sht30_controller_soft_reset();
                 error_streak = 0;
             }
@@ -239,32 +231,24 @@ static void sampling_thread_entry(void *parameter)
         
         rt_thread_mdelay(g_sht30.sampling_interval);
     }
-    
-    rt_kprintf("[SHT30] Sampling thread stopped\n");
 }
 
 int sht30_controller_init(void)
 {
     if (g_sht30.initialized) {
-        rt_kprintf("[SHT30] Already initialized\n");
         return RT_EOK;
     }
     
 
     if (sht30_configure_pins() != RT_EOK) {
-        rt_kprintf("[SHT30] ERROR: Pin configuration failed\n");
         return -RT_ERROR;
     }
 
     g_sht30.i2c_bus = rt_i2c_bus_device_find(SHT30_I2C_BUS);
-    rt_kprintf("[SHT30] i2c_bus:0x%p\n", g_sht30.i2c_bus);
     
     if (!g_sht30.i2c_bus) {
-        rt_kprintf("[SHT30] ERROR: Can not found i2c bus %s, init fail\n", SHT30_I2C_BUS);
         return -RT_ERROR;
     }
-    
-    rt_kprintf("[SHT30] Find i2c bus device %s\n", SHT30_I2C_BUS);
 
     rt_device_open((rt_device_t)g_sht30.i2c_bus, RT_DEVICE_FLAG_RDWR);
 
@@ -277,21 +261,16 @@ int sht30_controller_init(void)
     
     rt_err_t config_result = rt_i2c_configure(g_sht30.i2c_bus, &config);
     if (config_result != RT_EOK) {
-        rt_kprintf("[SHT30] I2C configuration failed: %d\n", config_result);
         return -RT_ERROR;
     }
-    
-    rt_kprintf("[SHT30] I2C配置: 速率=%dHz, 超时=%dms\n", config.max_hz, config.timeout);
 
     g_sht30.lock = rt_mutex_create("sht30_lock", RT_IPC_FLAG_PRIO);
     if (!g_sht30.lock) {
-        rt_kprintf("[SHT30] Failed to create mutex\n");
         return -RT_ENOMEM;
     }
 
     g_sht30.stop_sem = rt_sem_create("sht30_stop", 0, RT_IPC_FLAG_PRIO);
     if (!g_sht30.stop_sem) {
-        rt_kprintf("[SHT30] Failed to create semaphore\n");
         rt_mutex_delete(g_sht30.lock);
         return -RT_ENOMEM;
     }
@@ -303,8 +282,6 @@ int sht30_controller_init(void)
     g_sht30.success_count = 0;
 
     g_sht30.initialized = true;
-    
-    rt_kprintf("[SHT30] SHT30初始化成功！\n");
     return RT_EOK;
 }
 
@@ -324,16 +301,12 @@ int sht30_controller_deinit(void)
     }
 
     memset(&g_sht30, 0, sizeof(g_sht30));
-    
-    rt_kprintf("[SHT30] Controller deinitialized (auto-reset count: %u)\n", 
-              g_sht30.success_count);
     return 0;
 }
 
 int sht30_controller_read(sht30_data_t *data)
 {
     if (!g_sht30.initialized || !data) {
-        rt_kprintf("[SHT30] Not initialized or data is null\n");
         return -RT_ERROR;
     }
     
@@ -389,7 +362,6 @@ int sht30_controller_start_continuous(uint32_t interval_ms)
     }
     
     if (g_sht30.sampling_enabled) {
-        rt_kprintf("[SHT30] Continuous sampling already running\n");
         return 0;
     }
     
@@ -406,8 +378,6 @@ int sht30_controller_start_continuous(uint32_t interval_ms)
     
     g_sht30.sampling_enabled = true;
     rt_thread_startup(g_sht30.sampling_thread);
-    
-    rt_kprintf("[SHT30] Continuous sampling started (interval=%dms, stack=3KB)\n", interval_ms);
     return 0;
 }
 
@@ -425,8 +395,6 @@ int sht30_controller_stop_continuous(void)
     g_sht30.sampling_thread = RT_NULL;
 
     while (rt_sem_take(g_sht30.stop_sem, RT_WAITING_NO) == RT_EOK);
-    
-    rt_kprintf("[SHT30] Continuous sampling stopped\n");
     return 0;
 }
 
@@ -439,9 +407,6 @@ int sht30_controller_config_report(const sht30_report_config_t *config)
     rt_mutex_take(g_sht30.lock, RT_WAITING_FOREVER);
     g_sht30.report_config = *config;
     rt_mutex_release(g_sht30.lock);
-    
-    rt_kprintf("[SHT30] Report configured: enabled=%d, interval=%dms, format=%d\n",
-              config->enabled, config->interval_ms, config->format);
     return 0;
 }
 
@@ -454,7 +419,6 @@ int sht30_controller_send_data(sht30_format_t format)
     sht30_data_t data;
 
     if (sht30_controller_read(&data) != RT_EOK) {
-        rt_kprintf("[SHT30] Failed to read data\n");
         return -RT_ERROR;
     }
 
@@ -479,14 +443,12 @@ int sht30_controller_get_latest(sht30_data_t *data)
 int sht30_controller_set_temp_offset(float offset)
 {
     g_sht30.temp_offset = offset;
-    rt_kprintf("[SHT30] Temperature offset set to %.2fÂ°C\n", offset);
     return 0;
 }
 
 int sht30_controller_set_humi_offset(float offset)
 {
     g_sht30.humi_offset = offset;
-    rt_kprintf("[SHT30] Humidity offset set to %.2f%%\n", offset);
     return 0;
 }
 
@@ -509,7 +471,6 @@ int sht30_controller_soft_reset(void)
     }
     
     rt_thread_mdelay(20);
-    rt_kprintf("[SHT30] Soft reset completed\n");
     return RT_EOK;
 }
 
@@ -527,11 +488,8 @@ uint32_t sht30_controller_get_error_count(void)
 void sht30_scan_i2c_bus(void)
 {
     if (!g_sht30.i2c_bus) {
-        rt_kprintf("[SHT30] I2C bus not available for scanning\n");
         return;
     }
-    
-    rt_kprintf("[SHT30] Scanning I2C bus %s...\n", SHT30_I2C_BUS);
     
     for (uint8_t addr = 0x08; addr < 0x78; addr++) {
         struct rt_i2c_msg msg;
@@ -541,12 +499,6 @@ void sht30_scan_i2c_bus(void)
         msg.flags = RT_I2C_WR;
         msg.buf = &dummy;
         msg.len = 0; 
-        
-        if (rt_i2c_transfer(g_sht30.i2c_bus, &msg, 1) == 1) {
-            rt_kprintf("[SHT30] Found device at address: 0x%02X\n", addr);
-        }
     }
-    
-    rt_kprintf("[SHT30] I2C scan completed\n");
 }
 

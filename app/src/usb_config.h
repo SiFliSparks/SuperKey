@@ -111,15 +111,7 @@
 #endif
 
 /* 对于 SF32LB52x 系列，根据具体芯片型号配置 */
-#ifdef SOC_SF32LB52X
-    /* SF32LB52x 通常使用全速模式 */
-    #undef CONFIG_USB_HS
-#endif
-
-#ifdef SOC_SF32LB58X
-    /* SF32LB58x 支持高速模式 */
-    #define CONFIG_USB_HS
-#endif
+#undef CONFIG_USB_HS
 
 /* ================= HID Device Configuration ================ */
 #ifndef CONFIG_USBDEV_HID_MAX_INTF

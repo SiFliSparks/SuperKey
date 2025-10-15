@@ -84,9 +84,6 @@ static void key4_timer_callback(void *parameter)
                     button_action_t action = filtered_state ? BUTTON_PRESSED : BUTTON_RELEASED;
                     s_unified_callback(s_button_configs[BUTTON_KEY4].pin, action);
                 }
-                
-                rt_kprintf("[ButtonsBoard] KEY4 stable state: %s\n", 
-                          filtered_state ? "PRESSED" : "RELEASED");
             } else {
                 // 误触发，停止定时器
                 s_key4_debounce.debounce_in_progress = false;
@@ -131,8 +128,6 @@ static void key4_interrupt_handler(void *args)
     
     // 启动定时器进行周期性检查
     rt_timer_start(s_key4_timer);
-    
-    rt_kprintf("[ButtonsBoard] KEY4 interrupt triggered, starting enhanced debounce\n");
 }
 
 // 标准按钮适配器（KEY1-KEY3使用）
@@ -146,13 +141,10 @@ static void sdk_button_adapter(int32_t pin, button_action_t action)
 int buttons_board_init(button_handler_t unified_callback)
 {
     if (!unified_callback) {
-        rt_kprintf("[ButtonsBoard] Invalid callback\n");
         return -RT_EINVAL;
     }
     
     s_unified_callback = unified_callback;
-    
-    rt_kprintf("[ButtonsBoard] Initializing buttons with enhanced KEY4 debouncing...\n");
     
     // 初始化KEY4的定时器
     s_key4_timer = rt_timer_create("key4_debounce", 
@@ -162,7 +154,6 @@ int buttons_board_init(button_handler_t unified_callback)
                                    RT_TIMER_FLAG_PERIODIC | RT_TIMER_FLAG_SOFT_TIMER);
     
     if (s_key4_timer == RT_NULL) {
-        rt_kprintf("[ButtonsBoard] Failed to create KEY4 timer\n");
         return -RT_ERROR;
     }
     
@@ -184,8 +175,6 @@ int buttons_board_init(button_handler_t unified_callback)
             // 初始化KEY4状态
             rt_base_t level = rt_pin_read(s_button_configs[i].pin);
             s_key4_debounce.last_stable_state = (level == PIN_LOW);
-            
-            rt_kprintf("[ButtonsBoard] KEY4 configured with enhanced debouncing\n");
         } else {
             // KEY1-KEY3使用SDK驱动
             button_cfg_t cfg = {
@@ -198,7 +187,6 @@ int buttons_board_init(button_handler_t unified_callback)
             
             s_button_ids[i] = button_init(&cfg);
             if (s_button_ids[i] < 0) {
-                rt_kprintf("[ButtonsBoard] Failed to init button %d: %d\n", i, s_button_ids[i]);
                 // 清理已初始化的资源
                 for (int j = 0; j < i; j++) {
                     if (s_button_ids[j] >= 0) {
@@ -214,13 +202,10 @@ int buttons_board_init(button_handler_t unified_callback)
             }
             
             if (button_enable(s_button_ids[i]) != SF_EOK) {
-                rt_kprintf("[ButtonsBoard] Failed to enable button %d\n", i);
                 return -RT_ERROR;
             }
         }
     }
-    
-    rt_kprintf("[ButtonsBoard] Successfully initialized %d buttons (KEY4 with enhanced debouncing)\n", BUTTON_COUNT);
     return RT_EOK;
 }
 
@@ -241,7 +226,6 @@ int buttons_board_count(void)
 
 int buttons_board_deinit(void)
 {
-    rt_kprintf("[ButtonsBoard] Deinitializing buttons...\n");
     
     // 清理KEY4资源
     if (s_key4_timer) {
@@ -262,7 +246,6 @@ int buttons_board_deinit(void)
     }
     
     s_unified_callback = NULL;
-    rt_kprintf("[ButtonsBoard] Buttons deinitialized\n");
     return RT_EOK;
 }
 

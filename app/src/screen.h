@@ -189,56 +189,6 @@ int screen_enter_level2_auto(screen_group_t from_l1_group);
  */
 int screen_handle_back_button(void);
 
-/**********************
- * 编码器集成 - 简化版本
- **********************/
-
-/**
- * @brief 注册编码器回调用于屏幕切换
- * 
- * @note 在新架构中，这个函数由create_triple_screen_display()自动处理
- */
-void screen_register_encoder_callback(void);
-
-/**
- * @brief 取消编码器回调注册
- * 
- * @note 在新架构中，这个函数由cleanup_triple_screen_display()自动处理
- */
-void screen_unregister_encoder_callback(void);
-
-/**********************
- * 状态查询和调试
- **********************/
-
-/**
- * @brief 获取层级上下文信息（用于调试）
- * 
- * @return 层级上下文指针，可能为NULL
- * 
- * @note 在新架构中需要重新实现
- */
-const screen_hierarchy_context_t* screen_get_hierarchy_context(void);
-
-/**********************
- * 向后兼容性说明
- **********************/
-
-/*
- * 重构后的API变更说明：
- * 
- * 1. 所有API现在都是线程安全的
- * 2. UI更新异步进行，不会阻塞调用者
- * 3. 必须在主循环中调用screen_process_switch_request()
- * 4. 数据过期不再显示0xFFFFFFFF秒
- * 5. 不再出现timer线程死机问题
- * 
- * 迁移指南：
- * - 替换原有的screen.c实现
- * - 在main()循环中添加screen_process_switch_request()调用
- * - 数据更新API调用方式不变，但内部实现更安全
- * - 编码器设置自动化，无需手动配置
- */
 
 /**********************
  * 性能和内存使用

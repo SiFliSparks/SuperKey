@@ -6,10 +6,9 @@
 #include "event_bus.h"
 
 #define ENCODER_DEVICE_NAME1 "encoder1"
-#define ENCODER_POLLING_PERIOD_MS 10
-
-// 只添加最简单的时间去抖
-#define ENCODER_MIN_EVENT_INTERVAL_MS 1000    // 最小事件间隔：120ms
+#define ENCODER_POLLING_PERIOD_MS 10 //机械采集去抖
+#define ENCODER_MIN_EVENT_INTERVAL_MS 300 //事件去抖时间间隔
+#define ENCODER_PULSE_THRESHOLD 4//每4个脉冲算1格
 
 static struct {
     struct rt_device *device;
@@ -22,7 +21,7 @@ static struct {
     bool polling_enabled;
     rt_mutex_t lock;
     
-    // 只添加一个时间戳用于去抖
+    // 用于软件去抖的时间戳
     rt_tick_t last_event_time;
 } g_encoder = {0};
 
@@ -38,38 +37,51 @@ static void encoder_polling_timer_cb(void *parameter)
         return;
     }
     
+    // 读取编码器当前计数
     rt_int16_t current_count;
     rt_size_t bytes_read = rt_device_read(g_encoder.device, 0, &current_count, sizeof(current_count));
     
     if (bytes_read == sizeof(current_count)) {
         rt_mutex_take(g_encoder.lock, RT_WAITING_FOREVER);
         
-        int32_t delta = current_count - g_encoder.last_count;
-        if (g_encoder.sensitivity > 1) {
-            delta = delta / g_encoder.sensitivity;
-        }
+        // 计算原始脉冲变化量
+        int32_t raw_delta = current_count - g_encoder.last_count;
         
-        if (delta != 0) {
-            rt_tick_t current_time = rt_tick_get();
-            rt_tick_t time_since_last = current_time - g_encoder.last_event_time;
+        // ✅ 关键修改：阈值过滤
+        // 只处理绝对值 >= 3 的变化
+        if (raw_delta != 0) {
+            int32_t abs_delta = (raw_delta > 0) ? raw_delta : -raw_delta;
             
-            // 简单的时间去抖：只在间隔足够时才发布
-            if (time_since_last >= rt_tick_from_millisecond(ENCODER_MIN_EVENT_INTERVAL_MS)) {
-                g_encoder.last_count = current_count;
-                g_encoder.total_count += delta;
-                g_encoder.last_event_time = current_time;
+            if (abs_delta >= ENCODER_PULSE_THRESHOLD) {
+                rt_tick_t current_time = rt_tick_get();
+                rt_tick_t time_since_last = current_time - g_encoder.last_event_time;
                 
-                // 限制delta为±1，防止大幅跳跃
-                int32_t normalized_delta = (delta > 0) ? 1 : -1;
-                
-                event_data_encoder_t encoder_event = {
-                    .delta = normalized_delta,
-                    .total_count = g_encoder.total_count,
-                    .user_data = NULL
-                };
-                
-                event_bus_publish(EVENT_ENCODER_ROTATED, &encoder_event, sizeof(encoder_event),
-                                 EVENT_PRIORITY_HIGH, MODULE_ID_ENCODER);
+                // 最小50ms间隔，用于过滤机械抖动
+                if (time_since_last >= rt_tick_from_millisecond(ENCODER_MIN_EVENT_INTERVAL_MS)) {
+                    
+                    // 计算格数：每3个脉冲算作1格
+                    // 例如：raw_delta=7 → delta=2格（7/3=2余1）
+                    //       raw_delta=-5 → delta=-1格（-5/3=-1余-2）
+                    int32_t delta = raw_delta / ENCODER_PULSE_THRESHOLD;
+                    
+                    // 保留余数，避免丢失脉冲
+                    int32_t remainder = raw_delta % ENCODER_PULSE_THRESHOLD;
+                    g_encoder.last_count = current_count - remainder;
+                    
+                    g_encoder.total_count += delta;
+                    g_encoder.last_event_time = current_time;
+                    
+                    // 发布事件：delta 是"格数"
+                    event_data_encoder_t encoder_event = {
+                        .delta = delta,
+                        .total_count = g_encoder.total_count,
+                        .user_data = NULL
+                    };
+                    
+                    event_bus_publish(EVENT_ENCODER_ROTATED, &encoder_event, sizeof(encoder_event),
+                                     EVENT_PRIORITY_HIGH, MODULE_ID_ENCODER);
+                }
+            } else {
             }
         }
         
@@ -80,31 +92,24 @@ static void encoder_polling_timer_cb(void *parameter)
 int encoder_controller_init(void)
 {
     if (g_encoder.initialized) {
-        rt_kprintf("[Encoder] Already initialized\n");
         return 0;
     }
     
-    rt_kprintf("[Encoder] Initializing simple debounced encoder controller...\n");
-    
     HAL_PIN_Set(PAD_PA43, GPTIM1_CH1, PIN_NOPULL, 1);
     HAL_PIN_Set(PAD_PA41, GPTIM1_CH2, PIN_NOPULL, 1);
-    rt_kprintf("[Encoder] GPIO pins configured: PA43/PA41 -> GPTIM1_CH1/CH2\n");
     
     g_encoder.device = rt_device_find(ENCODER_DEVICE_NAME1);
     if (g_encoder.device == RT_NULL) {
-        rt_kprintf("[Encoder] Failed to find %s device\n", ENCODER_DEVICE_NAME1);
         return -RT_ERROR;
     }
     
     rt_err_t result = rt_device_open(g_encoder.device, RT_DEVICE_OFLAG_RDWR);
     if (result != RT_EOK) {
-        rt_kprintf("[Encoder] Failed to open device: %d\n", result);
         return result;
     }
     
     g_encoder.lock = rt_mutex_create("enc_lock", RT_IPC_FLAG_PRIO);
     if (!g_encoder.lock) {
-        rt_kprintf("[Encoder] Failed to create mutex\n");
         rt_device_close(g_encoder.device);
         return -RT_ENOMEM;
     }
@@ -116,22 +121,19 @@ int encoder_controller_init(void)
                                              RT_TIMER_FLAG_PERIODIC | RT_TIMER_FLAG_SOFT_TIMER);
     
     if (g_encoder.polling_timer == RT_NULL) {
-        rt_kprintf("[Encoder] Failed to create polling timer\n");
         rt_mutex_delete(g_encoder.lock);
         rt_device_close(g_encoder.device);
         return -RT_ENOMEM;
     }
     
     g_encoder.mode = ENCODER_MODE_IDLE;
-    g_encoder.sensitivity = 1;
+    g_encoder.sensitivity = 1;  // 不再使用 sensitivity，改用阈值
     g_encoder.last_count = 0;
     g_encoder.total_count = 0;
     g_encoder.polling_enabled = false;
-    g_encoder.last_event_time = 0;  // 初始化时间戳
+    g_encoder.last_event_time = 0;
     
     g_encoder.initialized = true;
-    
-    rt_kprintf("[Encoder] Simple debounced encoder controller initialized\n");
     return 0;
 }
 
@@ -140,8 +142,6 @@ int encoder_controller_deinit(void)
     if (!g_encoder.initialized) {
         return 0;
     }
-    
-    rt_kprintf("[Encoder] Deinitializing encoder controller...\n");
     
     encoder_controller_stop_polling();
     
@@ -161,8 +161,6 @@ int encoder_controller_deinit(void)
     }
     
     memset(&g_encoder, 0, sizeof(g_encoder));
-    
-    rt_kprintf("[Encoder] Encoder controller deinitialized\n");
     return 0;
 }
 
@@ -179,8 +177,6 @@ int encoder_controller_set_mode(encoder_mode_t mode)
     rt_mutex_take(g_encoder.lock, RT_WAITING_FOREVER);
     g_encoder.mode = mode;
     rt_mutex_release(g_encoder.lock);
-    
-    rt_kprintf("[Encoder] Mode set to: %s\n", encoder_mode_names[mode]);
     return 0;
 }
 
@@ -219,8 +215,6 @@ int encoder_controller_reset_count(void)
         g_encoder.last_count = 0;
         g_encoder.total_count = 0;
         rt_mutex_release(g_encoder.lock);
-        
-        rt_kprintf("[Encoder] Count reset to 0\n");
         return 0;
     }
     
@@ -247,35 +241,23 @@ int32_t encoder_controller_get_delta(void)
 int encoder_controller_start_polling(void)
 {
     if (!g_encoder.initialized) {
-        rt_kprintf("[Encoder] Not initialized\n");
         return -RT_ERROR;
     }
     
     if (g_encoder.polling_enabled) {
-        rt_kprintf("[Encoder] Polling already enabled\n");
         return 0;
     }
     
     uint32_t test_pub, test_proc, test_drop, test_queue;
-    if (event_bus_get_stats(&test_pub, &test_proc, &test_drop, &test_queue) == 0) {
-        rt_kprintf("[Encoder] Event bus ready: pub=%u, proc=%u, queue=%u\n", 
-                  test_pub, test_proc, test_queue);
-    } else {
-        rt_kprintf("[Encoder] WARNING: Event bus not ready, but starting polling anyway\n");
-    }
     
     rt_err_t result = rt_timer_start(g_encoder.polling_timer);
     if (result != RT_EOK) {
-        rt_kprintf("[Encoder] Failed to start polling timer: %d\n", result);
         return result;
     }
     
     g_encoder.polling_enabled = true;
     
     rt_thread_mdelay(100);
-    
-    rt_kprintf("[Encoder] Simple debounced polling started (period=%dms, min_interval=%dms)\n", 
-              ENCODER_POLLING_PERIOD_MS, ENCODER_MIN_EVENT_INTERVAL_MS);
     return 0;
 }
 
@@ -287,8 +269,6 @@ int encoder_controller_stop_polling(void)
     
     rt_timer_stop(g_encoder.polling_timer);
     g_encoder.polling_enabled = false;
-    
-    rt_kprintf("[Encoder] Polling stopped\n");
     return 0;
 }
 
@@ -305,8 +285,6 @@ int encoder_controller_set_sensitivity(uint8_t divider)
     rt_mutex_take(g_encoder.lock, RT_WAITING_FOREVER);
     g_encoder.sensitivity = divider;
     rt_mutex_release(g_encoder.lock);
-    
-    rt_kprintf("[Encoder] Sensitivity set to 1/%d\n", divider);
     return 0;
 }
 
@@ -325,7 +303,6 @@ bool encoder_controller_is_ready(void)
 
 int encoder_controller_enable_screen_switch(bool enable)
 {
-    rt_kprintf("[Encoder] Screen switch control managed by upper layer\n");
     return enable ? 0 : 0;
 }
 

@@ -42,7 +42,6 @@ static system_state_t g_system_state = {0};
 
 /* 前向声明 */
 static int system_init_stage(int stage, const char *stage_name, int (*init_func)(void));
-static void system_health_monitor(void);
 static void system_error_recovery(void);
 static int safe_component_init(const char *name, int (*init_func)(void));
 static void system_show_startup_progress(int stage, int total_stages, const char *message);
@@ -74,19 +73,14 @@ static int init_screen_system(void) {
 static int safe_component_init(const char *name, int (*init_func)(void))
 {
     if (!init_func) {
-        rt_kprintf("[INIT] ERROR: NULL init function for %s\n", name);
         return -RT_ERROR;
     }
-    
-    rt_kprintf("[INIT] Initializing %s...\n", name);
     
     int result = init_func();
     
     if (result == 0 || result == RT_EOK) {
-        rt_kprintf("[INIT] %s initialized successfully\n", name);
         return 0;
     } else {
-        rt_kprintf("[INIT] ERROR: %s initialization failed with code %d\n", name, result);
         return result;
     }
 }
@@ -106,8 +100,6 @@ static int system_init_stage(int stage, const char *stage_name, int (*init_func)
     int result = safe_component_init(stage_name, init_func);
     
     if (result != 0) {
-        rt_kprintf("[INIT] CRITICAL: Stage %d (%s) failed, aborting startup\n", 
-                  stage, stage_name);
         g_system_state.in_error_state = true;
         g_system_state.error_count++;
         return result;
@@ -118,75 +110,10 @@ static int system_init_stage(int stage, const char *stage_name, int (*init_func)
     return 0;
 }
 
-/* 系统健康监控 */
-static void system_health_monitor(void)
-{
-    static uint32_t last_published = 0, last_processed = 0;
-    rt_tick_t now = rt_tick_get();
-    
-    // 每30秒检查一次系统健康状态
-    if ((now - g_system_state.last_health_check) < rt_tick_from_millisecond(30000)) {
-        return;
-    }
-    
-    g_system_state.last_health_check = now;
-    
-    // 检查事件总线状态
-    uint32_t published, processed, dropped, queue_size;
-    if (event_bus_get_stats(&published, &processed, &dropped, &queue_size) == 0) {
-        
-        // 检查事件处理是否停滞
-        if (published == last_published && processed == last_processed && published > 0) {
-            rt_kprintf("[HEALTH] WARNING: Event processing stalled\n");
-            event_bus_cleanup();
-        }
-        
-        // 检查丢弃率
-        if (published > 0 && (dropped * 100 / published) > 10) {
-            rt_kprintf("[HEALTH] WARNING: High event drop rate (%d%%)\n", 
-                      dropped * 100 / published);
-            event_bus_cleanup();
-        }
-        
-        last_published = published;
-        last_processed = processed;
-    }
-    
-    // 检查内存使用情况
-    rt_size_t total, used, max_used;
-    rt_memory_info(&total, &used, &max_used);
-    float usage_percent = (float)used * 100 / total;
-    
-    if (usage_percent > 85) {
-        rt_kprintf("[HEALTH] WARNING: High memory usage (%.1f%%)\n", usage_percent);
-        
-        // 触发数据清理
-        data_manager_cleanup_expired_data();
-        event_bus_cleanup();
-        
-        // 如果内存使用仍然很高，进入错误恢复模式
-        rt_memory_info(&total, &used, &max_used);
-        usage_percent = (float)used * 100 / total;
-        if (usage_percent > 90) {
-            rt_kprintf("[HEALTH] CRITICAL: Memory usage critical, entering recovery mode\n");
-            system_error_recovery();
-        }
-    }
-    
-    // 检查HID设备状态
-    if (hid_device_ready()) {
-        int sem_count = hid_get_semaphore_count();
-        if (sem_count > 1) {
-            rt_kprintf("[HEALTH] WARNING: HID semaphore anomaly (%d), fixing\n", sem_count);
-            hid_reset_semaphore();
-        }
-    }
-}
 
 /* 系统错误恢复 */
 static void system_error_recovery(void)
 {
-    rt_kprintf("[RECOVERY] Starting system recovery procedures...\n");
     
     // 停止所有LED效果
     led_effects_stop_all_effects();
@@ -207,14 +134,10 @@ static void system_error_recovery(void)
         led_effects_set_all_leds(RGB_COLOR_BLACK);
         rt_thread_mdelay(200);
     }
-    
-    rt_kprintf("[RECOVERY] Recovery procedures completed\n");
 }
 
-/* 优雅关闭函数 */
 static void system_graceful_shutdown(void)
 {
-    rt_kprintf("[SHUTDOWN] Starting graceful shutdown...\n");
     
     // 1. 停止所有效果和指示灯
     screen_context_cleanup_background_breathing();
@@ -236,7 +159,6 @@ static void system_graceful_shutdown(void)
         g_system_state.system_lock = RT_NULL;
     }
     
-    rt_kprintf("[SHUTDOWN] Graceful shutdown completed\n");
 }
 
 /* 主函数重新设计 */
@@ -248,14 +170,6 @@ int main(void)
     // 初始化系统状态
     memset(&g_system_state, 0, sizeof(g_system_state));
     g_system_state.system_lock = rt_mutex_create("sys_lock", RT_IPC_FLAG_PRIO);
-    if (!g_system_state.system_lock) {
-        rt_kprintf("[MAIN] CRITICAL: Failed to create system lock\n");
-        return -RT_ENOMEM;
-    }
-    
-    rt_kprintf("========================================\n");
-    rt_kprintf("  SiFli Smart Display System Starting  \n");
-    rt_kprintf("========================================\n");
     
     // 阶段1: 显示系统初始化
     ret = system_init_stage(1, "Display System", init_display_system);
@@ -271,10 +185,6 @@ int main(void)
     
     // 阶段4: LED效果管理器初始化 (重新设计版本)
     ret = system_init_stage(4, "LED Effects Manager", led_effects_manager_init);
-    if (ret != 0) {
-        rt_kprintf("[INIT] WARNING: LED effects failed, continuing without LED support\n");
-        // LED失败不是致命的，继续启动
-    }
     
     // 阶段5: 数据管理器初始化
     ret = system_init_stage(5, "Data Manager", data_manager_init);
@@ -282,23 +192,12 @@ int main(void)
     
     // 阶段6: 串口数据处理器初始化
     ret = system_init_stage(6, "Serial Data Handler", serial_data_handler_init);
-    if (ret != 0) {
-        rt_kprintf("[INIT] WARNING: Serial handler failed, continuing without serial support\n");
-        // 串口失败不是致命的
-    }
     
     // 阶段7: HID和应用控制器初始化
     ret = system_init_stage(7, "HID & App Controller", app_controller_init);
-    if (ret != 0) {
-        rt_kprintf("[INIT] WARNING: HID system failed, continuing without HID support\n");
-        // HID失败不是致命的
-    }
     
     // 阶段8: 传感器初始化 (可选)
     ret = system_init_stage(8, "SHT30 Sensor", init_sht30_sensor);
-    if (ret != 0) {
-        rt_kprintf("[INIT] WARNING: SHT30 sensor failed, continuing without sensor\n");
-    }
     
     // 阶段9: 屏幕系统初始化
     ret = system_init_stage(9, "Screen System", init_screen_system);
@@ -307,29 +206,16 @@ int main(void)
     // 阶段10: 启动LED欢迎效果
     system_show_startup_progress(10, 10, "Startup Effects & System Ready");
     
-    // 启动LED欢迎序列 (如果LED管理器可用)
-    rt_kprintf("=== 启动LED欢迎序列 ===\n");
-    
-    // 第一阶段：青色流水灯
+    // 第一阶段：白色流水灯
     led_effect_handle_t flowing = led_effects_flowing(0xFFCCFF, 1000, 255, 2000);
-    rt_thread_mdelay(2000);
+    rt_thread_mdelay(1000);
     
     // 第二阶段：蓝色呼吸灯 (持续运行)
     led_effect_handle_t breathing = led_effects_breathing(RGB_COLOR_BLUE, 2000, 255, 0);
     
-    rt_kprintf("=== 系统启动完成 ===\n");
-    rt_kprintf("串口数据格式: sys_set <key> <value>\n");
-    rt_kprintf("支持的键值:\n");
-    rt_kprintf("  时间相关: time, date\n"); 
-    rt_kprintf("  天气相关: temp, weather_code, humidity, pressure, city_code\n");
-    rt_kprintf("  股票相关: stock_name, stock_price, stock_change\n");
-    rt_kprintf("  系统相关: cpu, cpu_temp, mem, gpu, gpu_temp, net_up, net_down\n");
-    
     g_system_state.system_ready = true;
     g_system_state.last_health_check = rt_tick_get();
     
-    // 主循环 - 重新设计
-    rt_kprintf("[MAIN] Entering main loop with health monitoring\n");
     
     while (g_system_state.system_ready) {
         // 1. 处理LVGL定时器
@@ -338,16 +224,6 @@ int main(void)
         // 2. 处理屏幕切换请求
         screen_process_switch_request();
         screen_context_process_background_restore();
-        // 3. 系统健康监控
-        if (!g_system_state.in_error_state) {
-            system_health_monitor();
-        }
-        
-        // 4. 错误状态检查
-        if (g_system_state.in_error_state && g_system_state.error_count > 5) {
-            rt_kprintf("[MAIN] CRITICAL: Too many errors, initiating shutdown\n");
-            break;
-        }
         
         // 5. 控制主循环频率
         uint32_t sleep_time = (ms > 0 && ms < 100) ? ms : 50;

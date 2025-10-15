@@ -94,8 +94,6 @@ static void key_thread_entry(void *parameter)
     key_message_t msg;
     rt_err_t result;
     
-    rt_kprintf("[Key_Thread] Key manager thread started\n");
-    
     while (g_key_mgr.running) {
         result = rt_mq_recv(g_key_mgr.key_msg_queue, &msg, sizeof(msg), 100);
         
@@ -104,12 +102,9 @@ static void key_thread_entry(void *parameter)
         } else if (result == -RT_ETIMEOUT) {
             continue;
         } else {
-            rt_kprintf("[Key_Thread] Message queue error: %d\n", result);
             rt_thread_mdelay(10);
         }
     }
-    
-    rt_kprintf("[Key_Thread] Key manager thread stopped\n");
     rt_sem_release(g_key_mgr.shutdown_sem);
 }
 
@@ -129,15 +124,7 @@ static void key_process_message(const key_message_t *msg)
                     context_info_t *ctx = &g_key_mgr.contexts[g_key_mgr.current_ctx];
                     if (ctx->registered && ctx->active && ctx->config.handler) {
                         int ret = ctx->config.handler(key_idx, action, ctx->config.user_data);
-                        
-                        if (ret != 0) {
-                            rt_kprintf("[Key_Thread] Context %s didn't handle key %d, action %d\n", 
-                                      ctx->config.name, key_idx, action);
-                        }
                     }
-                } else {
-                    rt_kprintf("[Key_Thread] No active context, key %d ignored\n", key_idx);
-                }
             }
             break;
             
@@ -156,14 +143,9 @@ static void key_process_message(const key_message_t *msg)
                     if (g_key_mgr.contexts[ctx_id].registered) {
                         g_key_mgr.contexts[ctx_id].active = true;
                         g_key_mgr.current_ctx = ctx_id;
-                        rt_kprintf("[Key_Thread] Activated context: %s\n", 
-                                  g_key_mgr.contexts[ctx_id].config.name);
-                    } else {
-                        rt_kprintf("[Key_Thread] Context %d not registered\n", ctx_id);
-                    }
+                    } 
                 } else {
                     g_key_mgr.current_ctx = KEY_CTX_NONE;
-                    rt_kprintf("[Key_Thread] Activated NONE context\n");
                 }
             }
             break;
@@ -177,15 +159,12 @@ static void key_process_message(const key_message_t *msg)
                         g_key_mgr.contexts[ctx_id].active = false;
                     }
                     g_key_mgr.current_ctx = KEY_CTX_NONE;
-                    rt_kprintf("[Key_Thread] Deactivated context ID=%d\n", ctx_id);
                 }
             }
             break;
             
         case KEY_MSG_ENABLE_LED_FEEDBACK:
             g_key_mgr.led_feedback_enabled = msg->data.led_feedback.enable;
-            rt_kprintf("[Key_Thread] LED feedback %s\n", 
-                      msg->data.led_feedback.enable ? "enabled" : "disabled");
             break;
             
         case KEY_MSG_SHUTDOWN:
@@ -193,15 +172,10 @@ static void key_process_message(const key_message_t *msg)
             break;
             
         default:
-            rt_kprintf("[Key_Thread] Unknown message type: %d\n", msg->type);
             break;
     }
 }
-
-
-
-
-/* 发送按键消息 */
+}
 static int key_send_message(const key_message_t *msg)
 {
     if (!g_key_mgr.key_msg_queue) {
@@ -216,11 +190,8 @@ static int key_send_message(const key_message_t *msg)
 int key_manager_init(void)
 {
     if (g_key_mgr.initialized) {
-        rt_kprintf("[key_mgr] Already initialized\n");
         return 0;
     }
-
-    rt_kprintf("[key_mgr] Initializing key manager (thread-based)...\n");
 
     memset(&g_key_mgr, 0, sizeof(g_key_mgr));
     g_key_mgr.current_ctx = KEY_CTX_NONE;
@@ -234,14 +205,12 @@ int key_manager_init(void)
                                           KEY_MSG_QUEUE_SIZE, 
                                           RT_IPC_FLAG_PRIO);
     if (!g_key_mgr.key_msg_queue) {
-        rt_kprintf("[key_mgr] Failed to create message queue\n");
         return -RT_ENOMEM;
     }
 
     // 2. 创建关闭信号量
     g_key_mgr.shutdown_sem = rt_sem_create("key_shutdown", 0, RT_IPC_FLAG_PRIO);
     if (!g_key_mgr.shutdown_sem) {
-        rt_kprintf("[key_mgr] Failed to create shutdown semaphore\n");
         rt_mq_delete(g_key_mgr.key_msg_queue);
         return -RT_ENOMEM;
     }
@@ -254,7 +223,6 @@ int key_manager_init(void)
                                            KEY_THREAD_PRIORITY,
                                            10);
     if (!g_key_mgr.key_thread) {
-        rt_kprintf("[key_mgr] Failed to create key thread\n");
         rt_sem_delete(g_key_mgr.shutdown_sem);
         rt_mq_delete(g_key_mgr.key_msg_queue);
         return -RT_ENOMEM;
@@ -262,7 +230,6 @@ int key_manager_init(void)
 
     // 4. 初始化按键板硬件
     if (buttons_board_init(key_isr_callback) != RT_EOK) {
-        rt_kprintf("[key_mgr] Failed to init buttons board\n");
         rt_sem_delete(g_key_mgr.shutdown_sem);
         rt_mq_delete(g_key_mgr.key_msg_queue);
         return -RT_ERROR;
@@ -272,7 +239,6 @@ int key_manager_init(void)
     rt_thread_startup(g_key_mgr.key_thread);
 
     g_key_mgr.initialized = true;
-    rt_kprintf("[key_mgr] Key manager initialized (thread-based, LED feedback enabled)\n");
     return 0;
 }
 
@@ -282,8 +248,6 @@ int key_manager_deinit(void)
     if (!g_key_mgr.initialized) {
         return 0;
     }
-
-    rt_kprintf("[key_mgr] Deinitializing key manager...\n");
 
     // 1. 发送关闭消息
     key_message_t shutdown_msg = {.type = KEY_MSG_SHUTDOWN};
@@ -307,8 +271,6 @@ int key_manager_deinit(void)
     }
 
     memset(&g_key_mgr, 0, sizeof(g_key_mgr));
-    
-    rt_kprintf("[key_mgr] Key manager deinitialized\n");
     return 0;
 }
 
@@ -316,26 +278,20 @@ int key_manager_deinit(void)
 int key_manager_register_context(const key_context_config_t *config)
 {
     if (!config || config->id >= KEY_CTX_MAX || config->id == KEY_CTX_NONE) {
-        rt_kprintf("[key_mgr] Invalid config parameter\n");
         return -RT_EINVAL;
     }
 
     if (!g_key_mgr.initialized) {
-        rt_kprintf("[key_mgr] Manager not initialized\n");
         return -RT_ERROR;
     }
 
     if (g_key_mgr.contexts[config->id].registered) {
-        rt_kprintf("[key_mgr] Context %d already registered\n", config->id);
         return -RT_EBUSY;
     }
 
     g_key_mgr.contexts[config->id].config = *config;
     g_key_mgr.contexts[config->id].registered = true;
     g_key_mgr.contexts[config->id].active = false;
-
-    rt_kprintf("[key_mgr] Registered context: %s (ID=%d)\n", 
-              config->name, config->id);
     return 0;
 }
 
@@ -353,8 +309,7 @@ int key_manager_unregister_context(key_context_id_t ctx_id)
     if (!g_key_mgr.contexts[ctx_id].registered) {
         return -RT_ERROR;
     }
-
-    // 如果是当前激活的上下文，先停用
+    // 如果当前上下文是要注销的，先停用它
     if (g_key_mgr.current_ctx == ctx_id) {
         key_message_t msg = {
             .type = KEY_MSG_DEACTIVATE_CONTEXT,
@@ -364,8 +319,6 @@ int key_manager_unregister_context(key_context_id_t ctx_id)
     }
 
     memset(&g_key_mgr.contexts[ctx_id], 0, sizeof(context_info_t));
-
-    rt_kprintf("[key_mgr] Unregistered context ID=%d\n", ctx_id);
     return 0;
 }
 

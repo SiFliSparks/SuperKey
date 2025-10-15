@@ -32,15 +32,7 @@ static void start_background_breathing_effect(void)
         led_effects_stop_effect(g_background_breathing_effect);
         g_background_breathing_effect = NULL;
     }
-    
-    rt_kprintf("[ScreenCtx] Starting background blue breathing effect\n");
     g_background_breathing_effect = led_effects_breathing(RGB_COLOR_BLUE, 2000, 255, 0);
-    
-    if (g_background_breathing_effect) {
-        rt_kprintf("[ScreenCtx] Background blue breathing effect started successfully\n");
-    } else {
-        rt_kprintf("[ScreenCtx] Failed to start background breathing effect\n");
-    }
 }
 
 /* 简化的ISR安全定时器回调 - 只设置标志位 */
@@ -58,7 +50,6 @@ static void check_and_restore_background(void)
 {
     if (g_need_restore_background) {
         g_need_restore_background = false;
-        rt_kprintf("[ScreenCtx] Restoring background breathing effect\n");
         start_background_breathing_effect();
     }
 }
@@ -116,9 +107,6 @@ static const key_led_binding_t l2_shortcut_led_bindings[] = {
 /* 改进的LED特效触发函数 - 使用简化的恢复机制 */
 static void trigger_key_led_effect(int key_idx, const key_led_binding_t *bindings, int binding_count)
 {
-    rt_kprintf("[ScreenCtx] === 按键%d触发LED特效 (修复映射) ===\n", key_idx);
-    
-    // 查找对应的LED绑定配置
     const key_led_binding_t *binding = NULL;
     for (int i = 0; i < binding_count; i++) {
         if (bindings[i].key_index == key_idx) {
@@ -128,17 +116,13 @@ static void trigger_key_led_effect(int key_idx, const key_led_binding_t *binding
     }
     
     if (!binding) {
-        rt_kprintf("[ScreenCtx] 警告：按键%d没有找到LED绑定配置\n", key_idx);
         return;
     }
     
     int led_index = binding->led_index;
-    rt_kprintf("[ScreenCtx] 找到LED绑定: Key%d -> LED%d, Color=0x%06X\n", 
-              key_idx, led_index, binding->color);
     
     // 停止背景呼吸灯效果
     if (g_background_breathing_effect) {
-        rt_kprintf("[ScreenCtx] Temporarily stopping background breathing effect\n");
         led_effects_stop_effect(g_background_breathing_effect);
         g_background_breathing_effect = NULL;
     }
@@ -157,14 +141,9 @@ static void trigger_key_led_effect(int key_idx, const key_led_binding_t *binding
         .custom_data = NULL
     };
     
-    rt_kprintf("[ScreenCtx] 准备启动LED特效: LED%d\n", led_index);
-    
     // 启动按键特效
     led_effect_handle_t handle = led_effects_start_effect(&config);
-    if (handle) {
-        rt_kprintf("[ScreenCtx] LED%d 1秒呼吸灯特效启动成功！\n", led_index);
-        
-        // 使用简化的定时器恢复机制
+    if (handle) {// 使用简化的定时器恢复机制
         if (!g_delayed_restore_timer) {
             g_delayed_restore_timer = rt_timer_create("restore_bg",
                                                      restore_background_timer_callback,
@@ -175,17 +154,13 @@ static void trigger_key_led_effect(int key_idx, const key_led_binding_t *binding
         
         if (g_delayed_restore_timer) {
             rt_timer_start(g_delayed_restore_timer);
-            rt_kprintf("[ScreenCtx] Background restore timer started (1.2s)\n");
         } else {
-            rt_kprintf("[ScreenCtx] Failed to create/start restore timer, manual restore in 1.2s\n");
             // 备用恢复机制：延迟恢复
             rt_thread_mdelay(1200);
             start_background_breathing_effect();
         }
         
     } else {
-        rt_kprintf("[ScreenCtx] LED%d 呼吸灯特效启动失败！\n", led_index);
-        
         // 如果特效启动失败，立即恢复背景呼吸灯
         rt_thread_mdelay(100);
         start_background_breathing_effect();
@@ -247,17 +222,10 @@ static key_context_config_t g_l2_muyu_config = {
 static int screen_group1_key_handler(int key_idx, button_action_t action, void *user_data)
 {
     (void)user_data;
-    
-    rt_kprintf("[ScreenCtx] === Group1收到按键事件 ===\n");
-    rt_kprintf("[ScreenCtx] Key索引: %d, 动作类型: %d\n", key_idx, action);
-    
     // 修复连击问题：只处理按下事件，忽略抬起事件
     if (action != BUTTON_PRESSED) {
-        rt_kprintf("[ScreenCtx] 忽略动作类型: %d (只处理BUTTON_PRESSED)\n", action);
         return 0;
     }
-    
-    rt_kprintf("[ScreenCtx] 开始处理按键%d...\n", key_idx);
     
     // 立即触发对应的LED呼吸灯特效（使用修正后的映射）
     trigger_key_led_effect(key_idx, group1_led_bindings, 
@@ -265,28 +233,21 @@ static int screen_group1_key_handler(int key_idx, button_action_t action, void *
     
     switch (key_idx) {
         case 0:
-            rt_kprintf("[Screen1] Key 1: Show time details (LED2: 青色1秒呼吸)\n");
             if (screen_enter_level2_auto(SCREEN_GROUP_1) != 0) {
-                rt_kprintf("[Screen1] Failed to enter level 2\n");
             }
             break;
             
         case 1:
-            rt_kprintf("[Screen1] Key 2: Refresh weather data (LED1: 粉色1秒呼吸)\n");
             screen_update_sensor_data();
             break;
             
         case 2:
-            rt_kprintf("[Screen1] Key 3: Stock info toggle (LED0: 白色1秒呼吸)\n");
             break;
             
         case 3:
-            rt_kprintf("[Screen1] Key 4: Switch to next screen group (LED1: 绿色1秒呼吸)\n");
             screen_next_group();
             break;
     }
-    
-    rt_kprintf("[ScreenCtx] 按键%d处理完成\n", key_idx);
     return 0;
 }
 
@@ -294,41 +255,14 @@ static int screen_group2_key_handler(int key_idx, button_action_t action, void *
 {
     (void)user_data;
     
-    rt_kprintf("[ScreenCtx] === Group2收到按键事件 ===\n");
-    rt_kprintf("[ScreenCtx] Key索引: %d, 动作类型: %d\n", key_idx, action);
-    
     // 修复连击问题：只处理按下事件，忽略抬起事件
     if (action != BUTTON_PRESSED) {
-        rt_kprintf("[ScreenCtx] Group2忽略动作类型: %d (只处理BUTTON_PRESSED)\n", action);
         return 0;
     }
-    
-    rt_kprintf("[ScreenCtx] Group2开始处理按键%d...\n", key_idx);
     
     // 使用修正后的映射触发LED特效
     trigger_key_led_effect(key_idx, group2_led_bindings, 
                           sizeof(group2_led_bindings)/sizeof(group2_led_bindings[0]));
-    
-    switch (key_idx) {
-        case 0:
-            rt_kprintf("[Screen2] Key 1: CPU/GPU info toggle (LED2: 橙色1秒呼吸)\n");
-            break;
-            
-        case 1:
-            rt_kprintf("[Screen2] Key 2: Memory/Disk info toggle (LED1: 黄色1秒呼吸)\n");
-            break;
-            
-        case 2:
-            rt_kprintf("[Screen2] Key 3: Network info toggle (LED0: 绿色1秒呼吸)\n");
-            break;
-            
-        case 3:
-            rt_kprintf("[Screen2] Key 4: Switch to next screen group (LED1: 洋红1秒呼吸)\n");
-            screen_next_group();
-            break;
-    }
-    
-    rt_kprintf("[ScreenCtx] Group2按键%d处理完成\n", key_idx);
     return 0;
 }
 
@@ -336,50 +270,14 @@ static int screen_group3_key_handler(int key_idx, button_action_t action, void *
 {
     (void)user_data;
     
-    rt_kprintf("[ScreenCtx] === Group3收到按键事件 ===\n");
-    rt_kprintf("[ScreenCtx] Key索引: %d, 动作类型: %d\n", key_idx, action);
-    
     // 修复连击问题：只处理按下事件，忽略抬起事件
     if (action != BUTTON_PRESSED) {
-        rt_kprintf("[ScreenCtx] Group3忽略动作类型: %d (只处理BUTTON_PRESSED)\n", action);
         return 0;
     }
-    
-    rt_kprintf("[ScreenCtx] Group3开始处理按键%d...\n", key_idx);
     
     // 使用修正后的映射触发LED特效
     trigger_key_led_effect(key_idx, group3_led_bindings, 
                           sizeof(group3_led_bindings)/sizeof(group3_led_bindings[0]));
-    
-    switch (key_idx) {
-        case 0:
-            rt_kprintf("[Screen3] Key 1: Enter media control (LED2: 紫色1秒呼吸)\n");
-            if (screen_enter_level2(SCREEN_L2_MEDIA_GROUP, SCREEN_L2_MEDIA_CONTROL) != 0) {
-                rt_kprintf("[Screen3] Failed to enter media control L2\n");
-            }
-            break;
-            
-        case 1:
-            rt_kprintf("[Screen3] Key 2: Enter web control (LED1: 蓝色1秒呼吸)\n");
-            if (screen_enter_level2(SCREEN_L2_WEB_GROUP, SCREEN_L2_WEB_CONTROL) != 0) {
-                rt_kprintf("[Screen3] Failed to enter web control L2\n");
-            }
-            break;
-            
-        case 2:
-            rt_kprintf("[Screen3] Key 3: Enter shortcut control (LED0: 红橙1秒呼吸)\n");
-            if (screen_enter_level2(SCREEN_L2_SHORTCUT_GROUP, SCREEN_L2_SHORTCUT_CONTROL) != 0) {
-                rt_kprintf("[Screen3] Failed to enter shortcut control L2\n");
-            }
-            break;
-            
-        case 3:
-            rt_kprintf("[Screen3] Key 4: Switch to next screen group (LED1: 浅黄1秒呼吸)\n");
-            screen_next_group();
-            break;
-    }
-    
-    rt_kprintf("[ScreenCtx] Group3按键%d处理完成\n", key_idx);
     return 0;
 }
 
@@ -389,7 +287,6 @@ static int screen_l2_time_key_handler(int key_idx, button_action_t action, void 
     
     // 修复连击问题：只处理按下事件，忽略抬起事件
     if (action != BUTTON_PRESSED) {
-        rt_kprintf("[ScreenCtx] L2_Time忽略动作类型: %d (只处理BUTTON_PRESSED)\n", action);
         return 0;
     }
     
@@ -407,19 +304,15 @@ static int screen_l2_time_key_handler(int key_idx, button_action_t action, void 
     
     switch (key_idx) {
         case 0:
-            rt_kprintf("[Screen L2] Key 1: Time detail function 1 (LED2: 青色1秒呼吸)\n");
             break;
             
         case 1:
-            rt_kprintf("[Screen L2] Key 2: Time detail function 2 (LED1: 黄色1秒呼吸)\n");
             break;
             
         case 2:
-            rt_kprintf("[Screen L2] Key 3: Time detail function 3 (LED0: 洋红1秒呼吸)\n");
             break;
             
         case 3:
-            rt_kprintf("[Screen L2] Key 4: Return to Level 1 (LED1: 白色1秒呼吸)\n");
             screen_return_to_level1();
             break;
     }
@@ -433,7 +326,6 @@ static int screen_l2_media_key_handler(int key_idx, button_action_t action, void
     
     // 修复连击问题：只处理按下事件，忽略抬起事件
     if (action != BUTTON_PRESSED) {
-        rt_kprintf("[ScreenCtx] L2_Media忽略动作类型: %d (只处理BUTTON_PRESSED)\n", action);
         return 0;
     }
     
@@ -445,28 +337,24 @@ static int screen_l2_media_key_handler(int key_idx, button_action_t action, void
     
     switch (key_idx) {
         case 0:
-            rt_kprintf("[Screen L2 Media] Key 1: Volume Up (LED2: 绿色1秒呼吸)\n");
             if (hid_ready) {
                 hid_consumer_click(CC_VOL_UP);
             }
             break;
             
         case 1:
-            rt_kprintf("[Screen L2 Media] Key 2: Volume Down (LED1: 橙色1秒呼吸)\n");
             if (hid_ready) {
                 hid_consumer_click(CC_VOL_DOWN);
             }
             break;
             
         case 2:
-            rt_kprintf("[Screen L2 Media] Key 3: Play/Pause (LED0: 紫色1秒呼吸)\n");
             if (hid_ready) {
                 hid_consumer_click(CC_PLAY_PAUSE);
             }
             break;
             
         case 3:
-            rt_kprintf("[Screen L2 Media] Key 4: Return to Level 1 (LED1: 白色1秒呼吸)\n");
             screen_return_to_level1();
             break;
     }
@@ -480,7 +368,6 @@ static int screen_l2_web_key_handler(int key_idx, button_action_t action, void *
     
     // 修复连击问题：只处理按下事件，忽略抬起事件
     if (action != BUTTON_PRESSED) {
-        rt_kprintf("[ScreenCtx] L2_Web忽略动作类型: %d (只处理BUTTON_PRESSED)\n", action);
         return 0;
     }
     
@@ -492,37 +379,27 @@ static int screen_l2_web_key_handler(int key_idx, button_action_t action, void *
     
     switch (key_idx) {
         case 0:
-            rt_kprintf("[Screen L2 Web] Key 1: Page Up (LED2: 深天蓝1秒呼吸)\n");
             if (hid_ready) {
                 hid_kbd_send_combo(0, KEY_PAGE_UP);
-                rt_kprintf("[Screen L2 Web] Page Up sent\n");
             } else {
-                rt_kprintf("[Screen L2 Web] HID not ready\n");
             }
             break;
             
         case 1:
-            rt_kprintf("[Screen L2 Web] Key 2: Page Down (LED1: 道奇蓝1秒呼吸)\n");
             if (hid_ready) {
                 hid_kbd_send_combo(0, KEY_PAGE_DOWN);
-                rt_kprintf("[Screen L2 Web] Page Down sent\n");
             } else {
-                rt_kprintf("[Screen L2 Web] HID not ready\n");
             }
             break;
             
         case 2:
-            rt_kprintf("[Screen L2 Web] Key 3: Refresh (F5) (LED0: 深青绿1秒呼吸)\n");
             if (hid_ready) {
                 hid_kbd_send_combo(0, KEY_F5);
-                rt_kprintf("[Screen L2 Web] F5 sent\n");
             } else {
-                rt_kprintf("[Screen L2 Web] HID not ready\n");
             }
             break;
             
         case 3:
-            rt_kprintf("[Screen L2 Web] Key 4: Return to Level 1 (LED1: 白色1秒呼吸)\n");
             screen_return_to_level1();
             break;
     }
@@ -536,7 +413,6 @@ static int screen_l2_shortcut_key_handler(int key_idx, button_action_t action, v
     
     // 修复连击问题：只处理按下事件，忽略抬起事件
     if (action != BUTTON_PRESSED) {
-        rt_kprintf("[ScreenCtx] L2_Shortcut忽略动作类型: %d (只处理BUTTON_PRESSED)\n", action);
         return 0;
     }
     
@@ -548,37 +424,27 @@ static int screen_l2_shortcut_key_handler(int key_idx, button_action_t action, v
     
     switch (key_idx) {
         case 0:
-            rt_kprintf("[Screen L2 Shortcut] Key 1: Copy (Ctrl+C) (LED2: 绿色1秒呼吸)\n");
             if (hid_ready) {
                 hid_kbd_send_combo(OS_MODIFIER, KEY_C);
-                rt_kprintf("[Screen L2 Shortcut] Copy sent\n");
             } else {
-                rt_kprintf("[Screen L2 Shortcut] HID not ready\n");
             }
             break;
             
         case 1:
-            rt_kprintf("[Screen L2 Shortcut] Key 2: Paste (Ctrl+V) (LED1: 金色1秒呼吸)\n");
             if (hid_ready) {
                 hid_kbd_send_combo(OS_MODIFIER, KEY_V);
-                rt_kprintf("[Screen L2 Shortcut] Paste sent\n");
             } else {
-                rt_kprintf("[Screen L2 Shortcut] HID not ready\n");
             }
             break;
             
         case 2:
-            rt_kprintf("[Screen L2 Shortcut] Key 3: Undo (Ctrl+Z) (LED0: 番茄红1秒呼吸)\n");
             if (hid_ready) {
                 hid_kbd_send_combo(OS_MODIFIER, KEY_Z);
-                rt_kprintf("[Screen L2 Shortcut] Undo sent\n");
             } else {
-                rt_kprintf("[Screen L2 Shortcut] HID not ready\n");
             }
             break;
             
         case 3:
-            rt_kprintf("[Screen L2 Shortcut] Key 4: Return to Level 1 (LED1: 白色1秒呼吸)\n");
             screen_return_to_level1();
             break;
     }
@@ -591,11 +457,8 @@ static bool g_contexts_initialized = false;
 int screen_context_init_all(void)
 {
     if (g_contexts_initialized) {
-        rt_kprintf("[ScreenCtx] Already initialized\n");
         return 0;
     }
-    
-    rt_kprintf("[ScreenCtx] Starting screen context initialization (fixed click issue)...\n");
     
     int ret;
     
@@ -609,10 +472,8 @@ int screen_context_init_all(void)
     };
     ret = key_manager_register_context(&config1);
     if (ret != 0) {
-        rt_kprintf("[ScreenCtx] Failed to register screen group 1 context: %d\n", ret);
         return ret;
     }
-    rt_kprintf("[ScreenCtx] Registered Group1 context\n");
     
     key_context_config_t config2 = {
         .id = KEY_CTX_SYSTEM,
@@ -624,10 +485,8 @@ int screen_context_init_all(void)
     };
     ret = key_manager_register_context(&config2);
     if (ret != 0) {
-        rt_kprintf("[ScreenCtx] Failed to register screen group 2 context: %d\n", ret);
         return ret;
     }
-    rt_kprintf("[ScreenCtx] Registered Group2 context\n");
     
     key_context_config_t config3 = {
         .id = KEY_CTX_SETTINGS,
@@ -639,10 +498,8 @@ int screen_context_init_all(void)
     };
     ret = key_manager_register_context(&config3);
     if (ret != 0) {
-        rt_kprintf("[ScreenCtx] Failed to register screen group 3 context: %d\n", ret);
         return ret;
     }
-    rt_kprintf("[ScreenCtx] Registered Group3 context\n");
     
     key_context_config_t config4 = {
         .id = KEY_CTX_UTILITIES,
@@ -654,15 +511,10 @@ int screen_context_init_all(void)
     };
     ret = key_manager_register_context(&config4);
     if (ret != 0) {
-        rt_kprintf("[ScreenCtx] Failed to register screen group 4 context: %d\n", ret);
         return ret;
     }
-    rt_kprintf("[ScreenCtx] Registered Group4 context\n");
 
     g_contexts_initialized = true;
-    rt_kprintf("[ScreenCtx] All screen contexts initialized successfully (click issue fixed)\n");
-    rt_kprintf("[ScreenCtx] LED映射关系: Key0->LED2, Key1->LED1, Key2->LED0, Key3->LED1\n");
-    rt_kprintf("[ScreenCtx] 按键处理: 只响应BUTTON_PRESSED事件，忽略BUTTON_RELEASED避免连击\n");
     
     return 0;
 }
@@ -692,7 +544,6 @@ int screen_context_deinit_all(void)
     key_manager_unregister_context(KEY_CTX_UTILITIES);
     key_manager_unregister_context(KEY_CTX_L2_MUYU);    
     g_contexts_initialized = false;
-    rt_kprintf("[ScreenCtx] All screen contexts deinitialized (click issue fixed)\n");
     return 0;
 }
 
@@ -701,7 +552,6 @@ int screen_context_activate_for_group(screen_group_t group)
     int ret = 0;
     
     if (!g_contexts_initialized) {
-        rt_kprintf("[ScreenCtx] Contexts not initialized\n");
         return -RT_ERROR;
     }
     
@@ -710,35 +560,25 @@ int screen_context_activate_for_group(screen_group_t group)
     switch (group) {
         case SCREEN_GROUP_1:
             ret = key_manager_activate_context(KEY_CTX_MENU_NAVIGATION);
-            rt_kprintf("[ScreenCtx] Activated Group 1: [1]时间详情(LED2青色) [2]刷新天气(LED1粉色) [3]股票切换(LED0白色) [4]下一组(LED1绿色)\n");
             break;
             
         case SCREEN_GROUP_2:
             ret = key_manager_activate_context(KEY_CTX_SYSTEM);
-            rt_kprintf("[ScreenCtx] Activated Group 2: [1]CPU/GPU(LED2橙色) [2]内存/磁盘(LED1黄色) [3]网络(LED0绿色) [4]下一组(LED1洋红)\n");
             break;
             
         case SCREEN_GROUP_3:
             ret = key_manager_activate_context(KEY_CTX_SETTINGS);
             if (ret == 0) {
-                rt_kprintf("[ScreenCtx] Activated Group 3: [1]媒体控制(LED2紫色) [2]网页控制(LED1蓝色) [3]快捷键(LED0红橙) [4]下一组(LED1浅黄)\n");
-                rt_kprintf("           每个按键触发时LED都会1秒呼吸灯特效，背景蓝色呼吸灯自动恢复\n");
-                rt_kprintf("           已修复连击问题：只响应按下事件，不响应抬起事件\n");
             }
             break;
         case SCREEN_GROUP_4:
             ret = key_manager_activate_context(KEY_CTX_UTILITIES);
-            rt_kprintf("[ScreenCtx] Activated Group 4: [1]赛博木鱼(LED2金色) [2]番茄钟(LED1红色) [3]全屏图片(LED0绿色) [4]下一组(LED1白色)\n");
-            rt_kprintf("           每个按键触发时LED都会1秒呼吸灯特效，背景蓝色呼吸灯自动恢复\n");
-            rt_kprintf("           已修复连击问题：只响应按下事件，不响应抬起事件\n");
             break;           
         default:
-            rt_kprintf("[ScreenCtx] Invalid screen group: %d\n", group);
             return -RT_EINVAL;
     }
     
     if (ret != 0) {
-        rt_kprintf("[ScreenCtx] Failed to activate context for group %d: %d\n", group, ret);
     }
     
     return ret;
@@ -757,7 +597,6 @@ int screen_context_deactivate_all(void)
 int screen_context_activate_for_level2(screen_l2_group_t l2_group)
 {
     if (!g_contexts_initialized) {
-        rt_kprintf("[ScreenCtx] Contexts not initialized for L2\n");
         return -RT_ERROR;
     }
     
@@ -769,15 +608,12 @@ int screen_context_activate_for_level2(screen_l2_group_t l2_group)
             if (key_manager_get_context_name(KEY_CTX_L2_TIME) == "UNREGISTERED") {
                 ret = key_manager_register_context(&g_l2_time_config);
                 if (ret != 0) {
-                    rt_kprintf("[ScreenCtx] Failed to register L2 time context: %d\n", ret);
                     return ret;
                 }
             }
             
             ret = key_manager_activate_context(KEY_CTX_L2_TIME);
             if (ret == 0) {
-                rt_kprintf("[ScreenCtx] Activated L2 Time Group: [1]详情1(LED2青色) [2]详情2(LED1黄色) [3]详情3(LED0洋红) [4]返回(LED1白色)\n");
-                rt_kprintf("           已修复连击问题：只响应BUTTON_PRESSED事件\n");
             }
             break;
             
@@ -785,14 +621,12 @@ int screen_context_activate_for_level2(screen_l2_group_t l2_group)
             if (key_manager_get_context_name(KEY_CTX_L2_MEDIA) == "UNREGISTERED") {
                 ret = key_manager_register_context(&g_l2_media_config);
                 if (ret != 0) {
-                    rt_kprintf("[ScreenCtx] Failed to register L2 media context: %d\n", ret);
                     return ret;
                 }
             }
             
             ret = key_manager_activate_context(KEY_CTX_L2_MEDIA);
             if (ret == 0) {
-                rt_kprintf("[ScreenCtx] Activated L2 Media Group: [1]音量+(LED2绿色) [2]音量-(LED1橙色) [3]播放/暂停(LED0紫色) [4]返回(LED1白色)\n");
             }
             break;
             
@@ -800,14 +634,12 @@ int screen_context_activate_for_level2(screen_l2_group_t l2_group)
             if (key_manager_get_context_name(KEY_CTX_L2_WEB) == "UNREGISTERED") {
                 ret = key_manager_register_context(&g_l2_web_config);
                 if (ret != 0) {
-                    rt_kprintf("[ScreenCtx] Failed to register L2 web context: %d\n", ret);
                     return ret;
                 }
             }
             
             ret = key_manager_activate_context(KEY_CTX_L2_WEB);
             if (ret == 0) {
-                rt_kprintf("[ScreenCtx] Activated L2 Web Group: [1]上翻页(LED2天蓝) [2]下翻页(LED1道奇蓝) [3]刷新F5(LED0青绿) [4]返回(LED1白色)\n");
             }
             break;
             
@@ -815,34 +647,27 @@ int screen_context_activate_for_level2(screen_l2_group_t l2_group)
             if (key_manager_get_context_name(KEY_CTX_L2_SHORTCUT) == "UNREGISTERED") {
                 ret = key_manager_register_context(&g_l2_shortcut_config);
                 if (ret != 0) {
-                    rt_kprintf("[ScreenCtx] Failed to register L2 shortcut context: %d\n", ret);
                     return ret;
                 }
             }
             
             ret = key_manager_activate_context(KEY_CTX_L2_SHORTCUT);
-            if (ret == 0) {
-                rt_kprintf("[ScreenCtx] Activated L2 Shortcut Group: [1]复制(LED2绿色) [2]粘贴(LED1金色) [3]撤销(LED0番茄红) [4]返回(LED1白色)\n");
-            }
             break;
 
         case SCREEN_L2_MUYU_GROUP:
             if (key_manager_get_context_name(KEY_CTX_L2_MUYU) == "UNREGISTERED") {
                 ret = key_manager_register_context(&g_l2_muyu_config);
                 if (ret != 0) {
-                    rt_kprintf("[ScreenCtx] Failed to register L2 muyu context: %d\n", ret);
                     return ret;
                 }
             }
             
             ret = key_manager_activate_context(KEY_CTX_L2_MUYU);
             if (ret == 0) {
-                rt_kprintf("[ScreenCtx] Activated L2 Muyu Group: [1]重置计数(LED2金色) [2]查看统计(LED1橙色) [3]设置选项(LED0橙色) [4]返回(LED1白色)\n");
             }
             break;
 
         default:
-            rt_kprintf("[ScreenCtx] Unknown L2 group: %d\n", l2_group);
             ret = -RT_EINVAL;
             break;
     }
@@ -857,14 +682,12 @@ int screen_context_deactivate_level2(void)
     key_manager_deactivate_context(KEY_CTX_L2_WEB);
     key_manager_deactivate_context(KEY_CTX_L2_SHORTCUT);
     key_manager_deactivate_context(KEY_CTX_L2_MUYU);
-    rt_kprintf("[ScreenCtx] All L2 contexts deactivated\n");
     return 0;
 }
 
 /* 初始化背景呼吸灯 - 在系统启动时调用 */
 int screen_context_init_background_breathing(void)
 {
-    rt_kprintf("[ScreenCtx] Initializing background breathing effect system\n");
     start_background_breathing_effect();
     return 0;
 }
@@ -873,7 +696,6 @@ int screen_context_init_background_breathing(void)
 int screen_context_cleanup_background_breathing(void)
 {
     if (g_background_breathing_effect) {
-        rt_kprintf("[ScreenCtx] Stopping background breathing effect\n");
         led_effects_stop_effect(g_background_breathing_effect);
         g_background_breathing_effect = NULL;
     }
@@ -883,7 +705,6 @@ int screen_context_cleanup_background_breathing(void)
 /* 手动恢复背景呼吸灯 - 紧急情况下使用 */
 int screen_context_restore_background_breathing(void)
 {
-    rt_kprintf("[ScreenCtx] Manually restoring background breathing effect\n");
     start_background_breathing_effect();
     return 0;
 }
@@ -920,50 +741,14 @@ static int screen_group4_key_handler(int key_idx, button_action_t action, void *
 {
     (void)user_data;
     
-    rt_kprintf("[ScreenCtx] === Group4收到按键事件 ===\n");
-    rt_kprintf("[ScreenCtx] Key索引: %d, 动作类型: %d\n", key_idx, action);
-    
     // 修复连击问题：只处理按下事件，忽略抬起事件
     if (action != BUTTON_PRESSED) {
-        rt_kprintf("[ScreenCtx] Group4忽略动作类型: %d (只处理BUTTON_PRESSED)\n", action);
         return 0;
     }
-    
-    rt_kprintf("[ScreenCtx] Group4开始处理按键%d...\n", key_idx);
     
     // 使用修正后的映射触发LED特效
     trigger_key_led_effect(key_idx, group4_led_bindings, 
                           sizeof(group4_led_bindings)/sizeof(group4_led_bindings[0]));
-    
-    switch (key_idx) {
-        case 0:
-            rt_kprintf("[Screen4] Key 1: Enter Cyber Muyu (LED2: 金色1秒呼吸)\n");
-            if (screen_enter_level2(SCREEN_L2_MUYU_GROUP, SCREEN_L2_MUYU_MAIN) != 0) {
-                rt_kprintf("[Screen4] Failed to enter muyu L2\n");
-            }
-            break;
-            
-        case 1:
-            rt_kprintf("[Screen4] Key 2: Enter Tomato Timer (LED1: 番茄红1秒呼吸)\n");
-            if (screen_enter_level2(SCREEN_L2_TOMATO_GROUP, SCREEN_L2_TOMATO_TIMER) != 0) {
-                rt_kprintf("[Screen4] Failed to enter tomato timer L2\n");
-            }
-            break;
-            
-        case 2:
-            rt_kprintf("[Screen4] Key 3: Enter Gallery View (LED0: 浅绿色1秒呼吸)\n");
-            if (screen_enter_level2(SCREEN_L2_GALLERY_GROUP, SCREEN_L2_GALLERY_VIEW) != 0) {
-                rt_kprintf("[Screen4] Failed to enter gallery L2\n");
-            }
-            break;
-            
-        case 3:
-            rt_kprintf("[Screen4] Key 4: Switch to next screen group (LED1: 白色1秒呼吸)\n");
-            screen_next_group();
-            break;
-    }
-    
-    rt_kprintf("[ScreenCtx] Group4按键%d处理完成\n", key_idx);
     return 0;
 }
 
@@ -972,16 +757,10 @@ static int screen_l2_muyu_key_handler(int key_idx, button_action_t action, void 
 {
     (void)user_data;
     
-    rt_kprintf("[ScreenCtx] === L2 Muyu收到按键事件 ===\n");
-    rt_kprintf("[ScreenCtx] Key索引: %d, 动作类型: %d\n", key_idx, action);
-    
     // 修复连击问题：只处理按下事件，忽略抬起事件
     if (action != BUTTON_PRESSED) {
-        rt_kprintf("[ScreenCtx] L2_Muyu忽略动作类型: %d (只处理BUTTON_PRESSED)\n", action);
         return 0;
     }
-    
-    rt_kprintf("[ScreenCtx] L2_Muyu开始处理按键%d...\n", key_idx);
     
     // 使用木鱼专用的LED特效
     trigger_key_led_effect(key_idx, l2_muyu_led_bindings, 
@@ -989,30 +768,23 @@ static int screen_l2_muyu_key_handler(int key_idx, button_action_t action, void 
     
     switch (key_idx) {
         case 0:
-            rt_kprintf("[Screen L2 Muyu] Key 1: 敲击木鱼 (LED2: 金色1秒呼吸)\n");
             // KEY1触发木鱼敲击
             screen_context_handle_muyu_tap();
             break;
             
         case 1:
-            rt_kprintf("[Screen L2 Muyu] Key 2: Reset Counter (LED1: 橙色1秒呼吸)\n");
             // KEY2触发重置
             screen_context_handle_muyu_reset();
             break;
             
         case 2:
-            rt_kprintf("[Screen L2 Muyu] Key 3: Settings (LED0: 橙色1秒呼吸)\n");
             // 预留：音效开关、自动保存等设置
-            rt_kprintf("[Screen L2 Muyu] Settings - Coming Soon\n");
             break;
             
         case 3:
-            rt_kprintf("[Screen L2 Muyu] Key 4: Return to Level 1 (LED1: 白色1秒呼吸)\n");
             screen_return_to_level1();
             break;
     }
-    
-    rt_kprintf("[ScreenCtx] L2_Muyu按键%d处理完成\n", key_idx);
     return 0;
 }
 
@@ -1020,18 +792,15 @@ static int screen_l2_muyu_key_handler(int key_idx, button_action_t action, void 
 /* 木鱼敲击事件处理实现 */
 int screen_context_handle_muyu_tap(void)
 {
-    rt_kprintf("[ScreenCtx] === 木鱼敲击事件 ===\n");
     
     // 调用UI管理器的木鱼敲击处理
     int ret = screen_ui_muyu_tap_event();
     if (ret != 0) {
-        rt_kprintf("[ScreenCtx] 木鱼敲击处理失败: %d\n", ret);
         return ret;
     }
     
     // 触发特殊的木鱼敲击LED特效（金色短暂闪烁）
     if (g_background_breathing_effect) {
-        rt_kprintf("[ScreenCtx] Stopping background for muyu tap effect\n");
         led_effects_stop_effect(g_background_breathing_effect);
         g_background_breathing_effect = NULL;
     }
@@ -1052,7 +821,6 @@ int screen_context_handle_muyu_tap(void)
     
     led_effect_handle_t muyu_effect = led_effects_start_effect(&muyu_effect_config);
     if (muyu_effect) {
-        rt_kprintf("[ScreenCtx] 木鱼金色特效启动成功\n");
         
         // 设置更短的恢复时间
         if (g_delayed_restore_timer) {
@@ -1061,24 +829,19 @@ int screen_context_handle_muyu_tap(void)
             rt_timer_start(g_delayed_restore_timer);
         }
     } else {
-        rt_kprintf("[ScreenCtx] 木鱼特效启动失败\n");
         // 立即恢复背景
         start_background_breathing_effect();
     }
-    
-    rt_kprintf("[ScreenCtx] 木鱼敲击事件处理完成\n");
     return 0;
 }
 
 /* 木鱼重置事件处理实现 */
 int screen_context_handle_muyu_reset(void)
 {
-    rt_kprintf("[ScreenCtx] === 木鱼重置事件 ===\n");
     
     // 调用UI管理器的重置处理
     int ret = screen_ui_reset_muyu_counter();
     if (ret != 0) {
-        rt_kprintf("[ScreenCtx] 木鱼重置处理失败: %d\n", ret);
         return ret;
     }
     
@@ -1104,7 +867,6 @@ int screen_context_handle_muyu_reset(void)
     
     led_effect_handle_t reset_effect = led_effects_start_effect(&reset_effect_config);
     if (reset_effect) {
-        rt_kprintf("[ScreenCtx] 重置确认红色特效启动成功\n");
     }
     
     // 恢复背景
@@ -1113,8 +875,6 @@ int screen_context_handle_muyu_reset(void)
         rt_timer_control(g_delayed_restore_timer, RT_TIMER_CTRL_SET_TIME, &new_timeout);
         rt_timer_start(g_delayed_restore_timer);
     }
-    
-    rt_kprintf("[ScreenCtx] 木鱼重置事件处理完成\n");
     return 0;
 }
 

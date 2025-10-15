@@ -105,21 +105,13 @@ static int led_feedback_event_handler(const event_t *event, void *user_data);
 /* 硬件初始化函数实现 */
 static int led_effects_hardware_init(void)
 {
-    rt_kprintf("[LED_Effects] Initializing LED hardware...\n");
-    
-    // 配置电源（仅对SF32LB52X芯片）
-#ifdef SF32LB52X
     HAL_PMU_ConfigPeriLdo(PMU_PERI_LDO3_3V3, true, true);
-    rt_kprintf("[LED_Effects] LDO power configured for SF32LB52X\n");
-#endif
     
     // 配置PWM引脚
     led_effects_configure_pins();
     
     // 等待硬件稳定
     rt_thread_mdelay(100);
-    
-    rt_kprintf("[LED_Effects] Hardware initialization completed\n");
     return 0;
 }
 
@@ -150,18 +142,7 @@ static int led_feedback_event_handler(const event_t *event, void *user_data)
 /* 配置PWM引脚 */
 static void led_effects_configure_pins(void)
 {
-#ifdef SF32LB52X
     HAL_PIN_Set(PAD_PA10, GPTIM2_CH1, PIN_NOPULL, 1);
-    rt_kprintf("[LED_Effects] PWM pin configured: PA10 -> GPTIM2_CH1 (SF32LB52X)\n");
-#elif defined(SF32LB58X)
-    HAL_PIN_Set(PAD_PB39, GPTIM3_CH4, PIN_NOPULL, 1);
-    rt_kprintf("[LED_Effects] PWM pin configured: PB39 -> GPTIM3_CH4 (SF32LB58X)\n");
-#elif defined(SF32LB56X)
-    HAL_PIN_Set(PAD_PB09, GPTIM3_CH4, PIN_NOPULL, 1);
-    rt_kprintf("[LED_Effects] PWM pin configured: PB09 -> GPTIM3_CH4 (SF32LB56X)\n");
-#else
-    rt_kprintf("[LED_Effects] Warning: Unknown chip type, pin configuration may be required\n");
-#endif
 }
 
 /* 定时器回调 - 只在中断上下文中发送消息 */
@@ -181,8 +162,6 @@ static void led_effects_thread_entry(void *parameter)
     led_message_t msg;
     rt_err_t result;
     
-    rt_kprintf("[LED_Thread] LED effects thread started\n");
-    
     while (g_led_mgr.running) {
         // 等待消息，超时时间为100ms
         result = rt_mq_recv(g_led_mgr.led_msg_queue, &msg, sizeof(msg), 100);
@@ -193,12 +172,9 @@ static void led_effects_thread_entry(void *parameter)
             // 超时是正常的，继续循环
             continue;
         } else {
-            rt_kprintf("[LED_Thread] Message queue error: %d\n", result);
             rt_thread_mdelay(10);
         }
     }
-    
-    rt_kprintf("[LED_Thread] LED effects thread stopped\n");
     rt_sem_release(g_led_mgr.shutdown_sem);
 }
 
@@ -299,11 +275,7 @@ static void led_process_message(const led_message_t *msg)
                 if (led_index >= 0 && led_index < (int)g_led_mgr.actual_led_count) {
                     rt_kprintf("[LED] High-priority feedback: LED%d=0x%06X for %ums\n", 
                             led_index, color, duration_ms);
-                    
-                    // 强制清除该LED的手动覆盖状态
                     g_led_mgr.manual_led_mask[led_index] = false;
-                    
-                    // 创建高优先级临时效果，会覆盖其他效果
                     for (int i = 0; i < MAX_CONCURRENT_EFFECTS; i++) {
                         if (!g_led_mgr.effects[i].active) {
                             led_effect_handle_internal_t *effect = &g_led_mgr.effects[i];
@@ -322,9 +294,6 @@ static void led_process_message(const led_message_t *msg)
                             effect->effect_tick = 0;
                             effect->active = true;
                             effect->id = g_led_mgr.next_effect_id++;
-                            
-                            rt_kprintf("[LED] Created high-priority effect ID=%d for LED%d\n", 
-                                    effect->id, led_index);
                             break;
                         }
                     }
@@ -337,7 +306,6 @@ static void led_process_message(const led_message_t *msg)
                     break;
                     
                 default:
-                    rt_kprintf("[LED_Thread] Unknown message type: %d\n", msg->type);
                     break;
             }
         }
@@ -368,7 +336,6 @@ static int led_send_message(const led_message_t *msg, bool sync)
     return (result == RT_EOK) ? 0 : -RT_ERROR;
 }
 
-/* 实际的效果更新函数 - 在线程上下文中执行 */
 static void led_do_update_effects(void)
 {
     // 清空LED缓冲区
@@ -474,11 +441,8 @@ static void led_do_update_hardware(void)
 int led_effects_manager_init(void)
 {
     if (g_led_mgr.initialized) {
-        rt_kprintf("[LED_Effects] Already initialized\n");
         return 0;
     }
-    
-    rt_kprintf("[LED_Effects] Initializing LED effects manager (thread-based)...\n");
     
     // 1. 硬件初始化
     led_effects_hardware_init();
@@ -487,7 +451,6 @@ int led_effects_manager_init(void)
     // 2. 查找RGB设备
     g_led_mgr.rgb_device = rgb_find_device(NULL);
     if (!g_led_mgr.rgb_device) {
-        rt_kprintf("[LED_Effects] RGB LED device not found\n");
         return -RT_ERROR;
     }
     
@@ -502,21 +465,18 @@ int led_effects_manager_init(void)
     g_led_mgr.manual_led_mask = (bool *)rt_malloc(g_led_mgr.actual_led_count * sizeof(bool));
     
     if (!g_led_mgr.led_buffer || !g_led_mgr.manual_led_buffer || !g_led_mgr.manual_led_mask) {
-        rt_kprintf("[LED_Effects] Failed to allocate LED buffers\n");
         return -RT_ENOMEM;
     }
     
     // 5. 创建消息队列
     g_led_mgr.led_msg_queue = rt_mq_create("led_mq", sizeof(led_message_t), 16, RT_IPC_FLAG_PRIO);
     if (!g_led_mgr.led_msg_queue) {
-        rt_kprintf("[LED_Effects] Failed to create message queue\n");
         return -RT_ENOMEM;
     }
     
     // 6. 创建关闭信号量
     g_led_mgr.shutdown_sem = rt_sem_create("led_shutdown", 0, RT_IPC_FLAG_PRIO);
     if (!g_led_mgr.shutdown_sem) {
-        rt_kprintf("[LED_Effects] Failed to create shutdown semaphore\n");
         rt_mq_delete(g_led_mgr.led_msg_queue);
         return -RT_ENOMEM;
     }
@@ -529,7 +489,6 @@ int led_effects_manager_init(void)
                                            LED_THREAD_PRIORITY,
                                            10);
     if (!g_led_mgr.led_thread) {
-        rt_kprintf("[LED_Effects] Failed to create LED thread\n");
         rt_sem_delete(g_led_mgr.shutdown_sem);
         rt_mq_delete(g_led_mgr.led_msg_queue);
         return -RT_ENOMEM;
@@ -542,7 +501,6 @@ int led_effects_manager_init(void)
                                              rt_tick_from_millisecond(LED_UPDATE_INTERVAL_MS),
                                              RT_TIMER_FLAG_PERIODIC);
     if (!g_led_mgr.update_timer) {
-        rt_kprintf("[LED_Effects] Failed to create update timer\n");
         return -RT_ENOMEM;
     }
     
@@ -564,8 +522,6 @@ int led_effects_manager_init(void)
     // 11. 订阅LED反馈事件
     event_bus_subscribe(EVENT_LED_FEEDBACK_REQUEST, led_feedback_event_handler, 
                        NULL, EVENT_PRIORITY_NORMAL);
-    
-    rt_kprintf("[LED_Effects] LED effects manager initialized successfully (thread-based)\n");
     return 0;
 }
 
@@ -575,8 +531,6 @@ int led_effects_manager_deinit(void)
     if (!g_led_mgr.initialized) {
         return 0;
     }
-    
-    rt_kprintf("[LED_Effects] Deinitializing LED effects manager...\n");
     
     // 1. 取消事件订阅
     event_bus_unsubscribe(EVENT_LED_FEEDBACK_REQUEST, led_feedback_event_handler);
@@ -622,7 +576,6 @@ int led_effects_manager_deinit(void)
     }
     
     g_led_mgr.initialized = false;
-    rt_kprintf("[LED_Effects] LED effects manager deinitialized\n");
     return 0;
 }
 
