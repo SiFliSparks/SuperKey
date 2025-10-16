@@ -158,7 +158,6 @@ static int create_fonts(void)
 
     if (!g_ui_mgr.handles.font_small || !g_ui_mgr.handles.font_medium || 
         !g_ui_mgr.handles.font_large || !g_ui_mgr.handles.font_xlarge) {
-        rt_kprintf("[UIManager] ERROR: Font creation failed\n");
         return -RT_ERROR;
     }
 
@@ -192,8 +191,6 @@ static int create_fonts(void)
     lv_style_set_text_font(&g_ui_mgr.handles.style_xxlarge, g_ui_mgr.handles.font_xxlarge);
     lv_style_set_text_align(&g_ui_mgr.handles.style_xxlarge, LV_TEXT_ALIGN_CENTER);
     lv_style_set_text_color(&g_ui_mgr.handles.style_xxlarge, lv_color_hex(0xFFFFFF));
-
-    rt_kprintf("[UIManager] Dynamic Chinese fonts created with scale factor: %.2f\n", g_ui_mgr.scale_factor);
     return 0;
 }
 
@@ -236,7 +233,6 @@ static int create_base_ui(void)
     /* 获取当前屏幕 */
     lv_obj_t *scr = lv_scr_act();
     if (!scr) {
-        rt_kprintf("[UIManager] ERROR: No active screen\n");
         return -RT_ERROR;
     }
 
@@ -247,7 +243,6 @@ static int create_base_ui(void)
     /* 创建根容器 */
     g_ui_mgr.handles.root = lv_obj_create(scr);
     if (!g_ui_mgr.handles.root) {
-        rt_kprintf("[UIManager] ERROR: Failed to create root container\n");
         return -RT_ERROR;
     }
     lv_obj_remove_style_all(g_ui_mgr.handles.root);
@@ -262,7 +257,6 @@ static int create_base_ui(void)
     g_ui_mgr.handles.right_panel = lv_obj_create(g_ui_mgr.handles.root);
 
     if (!g_ui_mgr.handles.left_panel || !g_ui_mgr.handles.middle_panel || !g_ui_mgr.handles.right_panel) {
-        rt_kprintf("[UIManager] ERROR: Failed to create panels\n");
         return -RT_ERROR;
     }
 
@@ -286,8 +280,6 @@ static int create_base_ui(void)
     lv_obj_set_pos(g_ui_mgr.handles.right_panel, RIGHT_X, 0);
     lv_obj_set_style_bg_color(g_ui_mgr.handles.right_panel, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(g_ui_mgr.handles.right_panel, LV_OPA_COVER, 0);
-
-    rt_kprintf("[UIManager] Base UI structure created successfully\n");
     return 0;
 }
 
@@ -309,7 +301,6 @@ static void cleanup_base_ui(void)
  */
 static void safe_cleanup_ui_objects(void)
 {
-    rt_kprintf("[UIManager] Starting safe UI cleanup...\n");
 
     /* 清理面板内容，但保留面板本身 */
     if (g_ui_mgr.handles.left_panel && lv_obj_is_valid(g_ui_mgr.handles.left_panel)) {
@@ -334,7 +325,6 @@ static void safe_cleanup_ui_objects(void)
     memset(&g_ui_mgr.handles.l2_digital_clock, 0, sizeof(g_ui_mgr.handles.l2_digital_clock));
 
     lv_timer_handler(); /* 处理清理操作 */
-    rt_kprintf("[UIManager] Safe UI cleanup completed\n");
 }
 
 /*********************
@@ -709,7 +699,6 @@ static lv_obj_t* create_digit_image(lv_obj_t *parent, int digit, lv_coord_t x_of
     
     lv_obj_t *img = lv_img_create(parent);
     if (!img) {
-        rt_kprintf("[UIManager] Failed to create digit image\n");
         return NULL;
     }
     
@@ -742,9 +731,6 @@ static lv_obj_t* create_digit_image(lv_obj_t *parent, int digit, lv_coord_t x_of
     lv_obj_set_style_border_width(img, 0, 0);
     lv_obj_set_style_outline_width(img, 0, 0);
     
-    rt_kprintf("[UIManager] Created MAXIMIZED digit %d: size=%dx%d, scale=%.2f\n", 
-              digit, img_width, img_height, max_scale);
-    
     return img;
 }
 
@@ -767,10 +753,7 @@ static void update_digit_image(lv_obj_t *img_obj, int digit)
  */
 static void build_l2_time_detail_page(void)
 {
-    rt_kprintf("[UIManager] Building MAXIMIZED L2 Digital Clock (extreme optimization)\n");
-    
     if (!g_ui_mgr.handles.left_panel || !g_ui_mgr.handles.middle_panel || !g_ui_mgr.handles.right_panel) {
-        rt_kprintf("[UIManager] Panel objects not available\n");
         return;
     }
     
@@ -875,7 +858,6 @@ static int screen_ui_update_l2_digital_clock(void)
     // 添加调试日志，确认更新正在进行
     static int last_sec = -1;
     if (sec != last_sec) {
-        rt_kprintf("[UIManager] Digital clock updated: %02d:%02d:%02d\n", hour, min, sec);
         last_sec = sec;
     }
     
@@ -891,8 +873,6 @@ static int screen_ui_update_l2_digital_clock(void)
  */
 static void build_l2_media_control_page(void)
 {
-    rt_kprintf("[UIManager] Building L2 Media Control page\n");
-    
     if (!g_ui_mgr.handles.left_panel || !g_ui_mgr.handles.middle_panel || !g_ui_mgr.handles.right_panel) return;
     
     /* 左屏：音量+ */
@@ -958,8 +938,6 @@ static void build_l2_media_control_page(void)
  */
 static void build_l2_web_control_page(void)
 {
-    rt_kprintf("[UIManager] Building L2 Web Control page\n");
-    
     if (!g_ui_mgr.handles.left_panel || !g_ui_mgr.handles.middle_panel || !g_ui_mgr.handles.right_panel) return;
     
     /* 左屏：上翻页 */
@@ -1025,8 +1003,6 @@ static void build_l2_web_control_page(void)
  */
 static void build_l2_shortcut_control_page(void)
 {
-    rt_kprintf("[UIManager] Building L2 Shortcut Control page\n");
-    
     if (!g_ui_mgr.handles.left_panel || !g_ui_mgr.handles.middle_panel || !g_ui_mgr.handles.right_panel) return;
     
     /* 左屏：复制 */
@@ -1094,23 +1070,19 @@ static void build_l2_shortcut_control_page(void)
 int screen_ui_manager_init(void)
 {
     if (g_ui_mgr.initialized) {
-        rt_kprintf("[UIManager] Already initialized\n");
         return 0;
     }
 
     /* 计算缩放因子 */
     g_ui_mgr.scale_factor = get_scale_factor();
-    rt_kprintf("[UIManager] Screen scale factor: %.2f\n", g_ui_mgr.scale_factor);
 
     /* 创建动态字体 */
     if (create_fonts() != 0) {
-        rt_kprintf("[UIManager] ERROR: Failed to create fonts\n");
         return -RT_ERROR;
     }
 
     /* 创建基础UI结构 */
     if (create_base_ui() != 0) {
-        rt_kprintf("[UIManager] ERROR: Failed to create base UI\n");
         cleanup_fonts();
         return -RT_ERROR;
     }
@@ -1118,8 +1090,6 @@ int screen_ui_manager_init(void)
     g_ui_mgr.current_group = SCREEN_GROUP_1;
     g_ui_mgr.current_level = SCREEN_LEVEL_1;
     g_ui_mgr.initialized = true;
-
-    rt_kprintf("[UIManager] UI manager initialized successfully\n");
     return 0;
 }
 
@@ -1133,8 +1103,6 @@ int screen_ui_manager_deinit(void)
     cleanup_fonts();
     
     memset(&g_ui_mgr, 0, sizeof(screen_ui_manager_t));
-    
-    rt_kprintf("[UIManager] UI manager deinitialized\n");
     return 0;
 }
 
@@ -1143,8 +1111,6 @@ int screen_ui_build_group1(void)
     if (!g_ui_mgr.initialized) {
         return -RT_ERROR;
     }
-
-    rt_kprintf("[UIManager] Building Group 1 UI (Time/Weather/Stock)\n");
     
     safe_cleanup_ui_objects();
     
@@ -1159,7 +1125,6 @@ int screen_ui_build_group1(void)
     screen_context_activate_for_group(SCREEN_GROUP_1);
     
     lv_obj_invalidate(lv_scr_act());
-    rt_kprintf("[UIManager] Group 1 UI built successfully\n");
     
     return 0;
 }
@@ -1169,8 +1134,6 @@ int screen_ui_build_group2(void)
     if (!g_ui_mgr.initialized) {
         return -RT_ERROR;
     }
-
-    rt_kprintf("[UIManager] Building Group 2 UI (System Monitor)\n");
     
     safe_cleanup_ui_objects();
     
@@ -1185,7 +1148,6 @@ int screen_ui_build_group2(void)
     screen_context_activate_for_group(SCREEN_GROUP_2);
     
     lv_obj_invalidate(lv_scr_act());
-    rt_kprintf("[UIManager] Group 2 UI built successfully\n");
     
     return 0;
 }
@@ -1196,7 +1158,6 @@ int screen_ui_build_group3(void)
         return -RT_ERROR;
     }
 
-    rt_kprintf("[UIManager] Building Group 3 UI (HID Control)\n");
     
     safe_cleanup_ui_objects();
     
@@ -1211,7 +1172,6 @@ int screen_ui_build_group3(void)
     screen_context_activate_for_group(SCREEN_GROUP_3);
     
     lv_obj_invalidate(lv_scr_act());
-    rt_kprintf("[UIManager] Group 3 UI built successfully\n");
     
     return 0;
 }
@@ -1222,7 +1182,6 @@ int screen_ui_build_l2_time(void)
         return -RT_ERROR;
     }
 
-    rt_kprintf("[UIManager] Building L2 Digital Time Display\n");
     
     safe_cleanup_ui_objects();
     build_l2_time_detail_page();  // 使用新的数字时钟页面
@@ -1233,7 +1192,6 @@ int screen_ui_build_l2_time(void)
     screen_context_activate_for_level2(SCREEN_L2_TIME_GROUP);
     
     lv_obj_invalidate(lv_scr_act());
-    rt_kprintf("[UIManager] L2 Digital Time Display built successfully\n");
     return 0;
 }
 
@@ -1293,8 +1251,6 @@ int screen_ui_build_l2_shortcut(void)
 
 int screen_ui_switch_to_group(screen_group_t target_group)
 {
-        rt_kprintf("[UIManager] DEBUG: Switching to group %d (MAX=%d)\n", 
-               target_group, SCREEN_GROUP_MAX);
     if (!g_ui_mgr.initialized || target_group >= SCREEN_GROUP_MAX) {
         return -RT_EINVAL;
     }
@@ -1309,7 +1265,6 @@ int screen_ui_switch_to_group(screen_group_t target_group)
         case SCREEN_GROUP_4:
             return screen_ui_build_group4();
         default:
-            rt_kprintf("[UIManager] Invalid target group: %d\n", target_group);
             return -RT_EINVAL;
     }
 }
@@ -1336,7 +1291,6 @@ int screen_ui_switch_to_l2(screen_l2_group_t l2_group, screen_l2_page_t l2_page)
         case SCREEN_L2_GALLERY_GROUP:
             return screen_ui_build_l2_gallery();
         default:
-            rt_kprintf("[UIManager] Invalid L2 group: %d\n", l2_group);
             return -RT_EINVAL;
     }
 }
@@ -1635,7 +1589,6 @@ static lv_obj_t* create_muyu_entrance_icon(lv_obj_t *parent)
 {
     lv_obj_t *img = lv_img_create(parent);
     if (!img) {
-        rt_kprintf("[UIManager] Failed to create muyu entrance icon\n");
         return NULL;
     }
     
@@ -1657,9 +1610,6 @@ static lv_obj_t* create_muyu_entrance_icon(lv_obj_t *parent)
     // 移除所有边距和边框
     lv_obj_set_style_pad_all(img, 0, 0);
     lv_obj_set_style_border_width(img, 0, 0);
-    
-    rt_kprintf("[UIManager] Created muyu entrance icon: size=%dx%d, scale=%.2f (reduced 50%%)\n", 
-              icon_size, icon_size, scale);
     
     return img;
 }
@@ -1761,7 +1711,6 @@ static lv_obj_t* create_muyu_display_image(lv_obj_t *parent)
 {
     lv_obj_t *img = lv_img_create(parent);
     if (!img) {
-        rt_kprintf("[UIManager] Failed to create muyu display image\n");
         return NULL;
     }
     
@@ -1791,9 +1740,6 @@ static lv_obj_t* create_muyu_display_image(lv_obj_t *parent)
     lv_obj_clear_flag(img, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_style_bg_opa(img, LV_OPA_TRANSP, 0);  // 透明背景
     
-    rt_kprintf("[UIManager] Created muyu display image using entrance icon style: size=%dx%d, scale=%.2f\n", 
-              icon_size, icon_size, scale);
-    
     return img;
 }
 
@@ -1802,10 +1748,8 @@ static lv_obj_t* create_muyu_display_image(lv_obj_t *parent)
  */
 static void build_l2_muyu_main_page(void)
 {
-    rt_kprintf("[UIManager] Building L2 Cyber Muyu Main Page (key-based interaction)\n");
     
     if (!g_ui_mgr.handles.left_panel || !g_ui_mgr.handles.middle_panel || !g_ui_mgr.handles.right_panel) {
-        rt_kprintf("[UIManager] Panel objects not available\n");
         return;
     }
     
@@ -1884,8 +1828,6 @@ int screen_ui_build_group4(void)
     if (!g_ui_mgr.initialized) {
         return -RT_ERROR;
     }
-
-    rt_kprintf("[UIManager] Building Group 4 UI (Utility Tools)\n");
     
     safe_cleanup_ui_objects();
     
@@ -1900,7 +1842,6 @@ int screen_ui_build_group4(void)
     screen_context_activate_for_group(SCREEN_GROUP_4);
     
     lv_obj_invalidate(lv_scr_act());
-    rt_kprintf("[UIManager] Group 4 UI built successfully\n");
     
     return 0;
 }
@@ -1910,8 +1851,6 @@ int screen_ui_build_l2_muyu(void)
     if (!g_ui_mgr.initialized) {
         return -RT_ERROR;
     }
-
-    rt_kprintf("[UIManager] Building L2 Cyber Muyu Main Page\n");
     
     safe_cleanup_ui_objects();
     build_l2_muyu_main_page();
@@ -1922,7 +1861,6 @@ int screen_ui_build_l2_muyu(void)
     screen_context_activate_for_level2(SCREEN_L2_MUYU_GROUP);
     
     lv_obj_invalidate(lv_scr_act());
-    rt_kprintf("[UIManager] L2 Cyber Muyu built successfully\n");
     return 0;
 }
 
@@ -1932,9 +1870,6 @@ int screen_ui_build_l2_tomato(void)
         return -RT_ERROR;
     }
 
-    // 预留番茄钟实现
-    rt_kprintf("[UIManager] L2 Tomato Timer - Coming Soon\n");
-    
     safe_cleanup_ui_objects();
     
     // 临时显示"开发中"界面
@@ -1957,7 +1892,6 @@ int screen_ui_build_l2_gallery(void)
     }
 
     // 预留全屏图片实现
-    rt_kprintf("[UIManager] L2 Gallery View - Coming Soon\n");
     
     safe_cleanup_ui_objects();
     
@@ -2040,9 +1974,6 @@ int screen_ui_muyu_tap_event(void)
     // 更新显示
     screen_ui_update_muyu_display();
     
-    rt_kprintf("[UIManager] Muyu tap event: count=%u, total=%u\n", 
-              g_ui_mgr.muyu_data.tap_count, g_ui_mgr.muyu_data.total_taps);
-    
     return 0;
 }
 
@@ -2062,9 +1993,6 @@ int screen_ui_reset_muyu_counter(void)
     
     // 更新显示
     screen_ui_update_muyu_display();
-    
-    rt_kprintf("[UIManager] Muyu counter reset. Total preserved: %u\n", 
-              g_ui_mgr.muyu_data.total_taps);
     
     return 0;
 }

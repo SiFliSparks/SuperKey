@@ -5,12 +5,12 @@
 #include "usbd_hid.h"
 #include <string.h>
 
-#define USBD_VID           0x1234
-#define USBD_PID           0x5678
+#define USBD_VID           0x38f4
+#define USBD_PID           0x1000
 #define USBD_MAX_POWER     100
 #define USBD_LANGID_STRING 0x0409
 
-#define HID_EP_ADDR          0x81
+#define HID_EP_ADDR          0x86
 #define HID_EP_SIZE          9
 #define HID_EP_INTERVAL      10
 

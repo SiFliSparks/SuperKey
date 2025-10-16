@@ -1,5 +1,3 @@
-// main.c - 修复编译错误版本
-
 #include "rtthread.h"
 #include "lvgl.h"
 #include "bf0_hal.h"
@@ -18,7 +16,7 @@
 #include "drv_rgbled.h"
 #include <board.h>
 #include <stdlib.h>
-#include <string.h>  // 添加缺少的头文件
+#include <string.h>
 #include "led_effects_manager.h"
 #include "screen_context.h"
 /* 系统线程优先级定义 */
@@ -53,7 +51,7 @@ static int init_sht30_sensor(void) {
     if (sht30_controller_init() == RT_EOK) {
         sht30_report_config_t config = {
             .enabled = false,
-            .interval_ms = 5000,
+            .interval_ms = 4000,
             .format = SHT30_FORMAT_SI,
             .include_derived = true
         };
@@ -65,7 +63,7 @@ static int init_sht30_sensor(void) {
 }
 static int init_screen_system(void) { 
     create_triple_screen_display(); 
-    rt_thread_mdelay(500);
+    rt_thread_mdelay(10);
     return 0; 
 }
 
@@ -106,7 +104,7 @@ static int system_init_stage(int stage, const char *stage_name, int (*init_func)
     }
     
     // 每个阶段完成后等待一小段时间，确保初始化稳定
-    rt_thread_mdelay(100);
+    rt_thread_mdelay(1);
     return 0;
 }
 
@@ -183,7 +181,7 @@ int main(void)
     ret = system_init_stage(3, "Event Bus", event_bus_init);
     if (ret != 0) goto error_exit;
     
-    // 阶段4: LED效果管理器初始化 (重新设计版本)
+    // 阶段4: LED效果管理器初始化
     ret = system_init_stage(4, "LED Effects Manager", led_effects_manager_init);
     
     // 阶段5: 数据管理器初始化

@@ -270,17 +270,40 @@ static int screen_group3_key_handler(int key_idx, button_action_t action, void *
 {
     (void)user_data;
     
-    // 修复连击问题：只处理按下事件，忽略抬起事件
+    // 修复连击问题：只处理按下事件
     if (action != BUTTON_PRESSED) {
         return 0;
     }
     
-    // 使用修正后的映射触发LED特效
+    // 触发LED特效
     trigger_key_led_effect(key_idx, group3_led_bindings, 
                           sizeof(group3_led_bindings)/sizeof(group3_led_bindings[0]));
+    
+    // ⭐ 新增：按键功能实现
+    switch (key_idx) {
+        case 0:
+            // KEY1: 进入媒体控制L2页面
+            screen_enter_level2(SCREEN_L2_MEDIA_GROUP, SCREEN_L2_MEDIA_CONTROL);
+            break;
+            
+        case 1:
+            // KEY2: 进入网页控制L2页面
+            screen_enter_level2(SCREEN_L2_WEB_GROUP, SCREEN_L2_WEB_CONTROL);
+            break;
+            
+        case 2:
+            // KEY3: 进入快捷键L2页面
+            screen_enter_level2(SCREEN_L2_SHORTCUT_GROUP, SCREEN_L2_SHORTCUT_CONTROL);
+            break;
+            
+        case 3:
+            // KEY4: 切换到下一组
+            screen_next_group();
+            break;
+    }
+    
     return 0;
 }
-
 static int screen_l2_time_key_handler(int key_idx, button_action_t action, void *user_data)
 {
     (void)user_data;
@@ -741,14 +764,38 @@ static int screen_group4_key_handler(int key_idx, button_action_t action, void *
 {
     (void)user_data;
     
-    // 修复连击问题：只处理按下事件，忽略抬起事件
+    // 修复连击问题：只处理按下事件
     if (action != BUTTON_PRESSED) {
         return 0;
     }
     
-    // 使用修正后的映射触发LED特效
+    // 触发LED特效
     trigger_key_led_effect(key_idx, group4_led_bindings, 
                           sizeof(group4_led_bindings)/sizeof(group4_led_bindings[0]));
+    
+    // ⭐ 新增：按键功能实现
+    switch (key_idx) {
+        case 0:
+            // KEY1: 进入木鱼L2页面
+            screen_enter_level2(SCREEN_L2_MUYU_GROUP, SCREEN_L2_MUYU_MAIN);
+            break;
+            
+        case 1:
+            // KEY2: 进入番茄钟L2页面（预留）
+            screen_enter_level2(SCREEN_L2_TOMATO_GROUP, SCREEN_L2_TOMATO_TIMER);
+            break;
+            
+        case 2:
+            // KEY3: 进入全屏图片L2页面（预留）
+            screen_enter_level2(SCREEN_L2_GALLERY_GROUP, SCREEN_L2_GALLERY_VIEW);
+            break;
+            
+        case 3:
+            // KEY4: 切换到下一组
+            screen_next_group();
+            break;
+    }
+    
     return 0;
 }
 
