@@ -281,22 +281,24 @@ int screen_core_process_messages(void)
 /* 消息处理函数实现 */
 static int process_update_time_message(void)
 {
-    /* 扩展时间更新条件：
-     * 1. L1层级的Group 1（原有逻辑）
-     * 2. L2层级的时间详情页面（新增逻辑）
-     */
-    
-    // 情况1：L1层级的Group 1 - 原有逻辑保持不变
-    if (g_core.current_group == SCREEN_GROUP_1 && g_core.current_level == SCREEN_LEVEL_1) {
-        return screen_ui_update_time_display();
+    // L1层级: 只在Group1更新时间
+    if (g_core.current_level == SCREEN_LEVEL_1) {
+        if (g_core.current_group == SCREEN_GROUP_1) {
+            return screen_ui_update_time_display();
+        }
+        return 0;  // 其他Group不需要时间更新
     }
     
-    // 情况2：L2层级的时间详情页面 - 新增逻辑支持数字时钟
-    if (g_core.current_level == SCREEN_LEVEL_2 && g_core.l2_current_group == SCREEN_L2_TIME_GROUP) {
-        return screen_ui_update_time_display();
+    // L2层级: 时间详情页和木鱼页都需要更新
+    if (g_core.current_level == SCREEN_LEVEL_2) {
+        if (g_core.l2_current_group == SCREEN_L2_TIME_GROUP || 
+            g_core.l2_current_group == SCREEN_L2_MUYU_GROUP) {
+            return screen_ui_update_time_display();
+        }
+        return 0;  // 其他L2页面不需要时间更新
     }
     
-    return 0; // 其他情况不更新时间
+    return 0;
 }
 
 static int process_update_weather_message(const weather_data_t *data)
@@ -366,7 +368,6 @@ static int process_update_system_message(const system_monitor_data_t *data)
     
     return screen_ui_update_system_display(data);
 }
-/* L2页面管理函数 - 添加在文件末尾 */
 
 /**
  * 获取L2组中的最大页面数
@@ -490,10 +491,8 @@ static int process_enter_l2_message(const screen_l2_enter_msg_t *msg)
         return -RT_EINVAL;
     }
     
-    /* 停止所有组定时器 */
     screen_timer_stop_all_group_timers();
     
-    /* 执行L2切换 */
     int ret = screen_ui_switch_to_l2(msg->l2_group, msg->l2_page);
     
     if (ret == 0) {
@@ -503,9 +502,13 @@ static int process_enter_l2_message(const screen_l2_enter_msg_t *msg)
         g_core.l2_current_page = msg->l2_page;
         rt_mutex_release(g_core.state_lock);
         
-        // 如果进入的是时间详情L2页面，启动时钟定时器
+        // 启动对应的定时器
         if (msg->l2_group == SCREEN_L2_TIME_GROUP) {
             screen_timer_start_l2_timers();
+        }
+        // 木鱼页面启动木鱼定时器
+        else if (msg->l2_group == SCREEN_L2_MUYU_GROUP) {
+            screen_timer_start_l2_muyu_timers();
         }
     }
     
@@ -519,7 +522,6 @@ static int process_return_l1_message(void)
     screen_l2_group_t previous_l2_group = g_core.l2_current_group;
     rt_mutex_release(g_core.state_lock);
     
-    /* 执行返回L1 */
     int ret = screen_ui_return_to_l1(l1_group);
     
     if (ret == 0) {
@@ -527,12 +529,16 @@ static int process_return_l1_message(void)
         g_core.current_level = SCREEN_LEVEL_1;
         rt_mutex_release(g_core.state_lock);
         
-        // 如果是从时间详情L2返回，需要停止L2专用定时器
+        // 停止L2专用定时器
         if (previous_l2_group == SCREEN_L2_TIME_GROUP) {
             screen_timer_stop(SCREEN_TIMER_CLOCK);
         }
+        // 停止木鱼定时器
+        else if (previous_l2_group == SCREEN_L2_MUYU_GROUP) {
+            screen_timer_stop(SCREEN_TIMER_MUYU);
+        }
         
-        /* 重启对应组的定时器 */
+        // 重启对应组的定时器
         if (l1_group == SCREEN_GROUP_1) {
             screen_timer_start_group1_timers();
         } else if (l1_group == SCREEN_GROUP_2) {

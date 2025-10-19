@@ -13,10 +13,10 @@ static const screen_timer_config_t default_configs[SCREEN_TIMER_MAX] = {
     {SCREEN_TIMER_STOCK,   10000, true,  true,  "stock"},
     {SCREEN_TIMER_SYSTEM,  2000,  true,  true,  "system"},
     {SCREEN_TIMER_SENSOR,  5000,  true,  true,  "sensor"},
-    {SCREEN_TIMER_CLEANUP, 60000, true,  true,  "cleanup"}
+    {SCREEN_TIMER_CLEANUP, 60000, true,  true,  "cleanup"},
+    {SCREEN_TIMER_MUYU,    200,   true,  true,  "muyu"}
 };
 
-/* 极简的ISR安全定时器回调 - 避免所有同步操作 */
 static void safe_timer_callback(void *parameter)
 {
     screen_timer_type_t type = (screen_timer_type_t)((uintptr_t)parameter);
@@ -25,12 +25,9 @@ static void safe_timer_callback(void *parameter)
         return;
     }
     
-    /* 极简方案：只更新触发计数，不使用任何锁或中断控制 
-     * 在32位系统上，简单的整数递增通常是原子的 */
     g_timer_mgr.trigger_counts[type]++;
     g_timer_mgr.last_trigger_times[type] = rt_tick_get();
     
-    /* 根据定时器类型发送相应消息 - 确保screen_core的消息发送是ISR安全的 */
     switch (type) {
         case SCREEN_TIMER_CLOCK:
             screen_core_post_update_time();
@@ -56,11 +53,22 @@ static void safe_timer_callback(void *parameter)
             screen_core_post_cleanup_request();
             break;
             
+        case SCREEN_TIMER_MUYU:
+            screen_core_post_update_time(); //木鱼UI更新 - 借用时间更新消息
+            break;
+            
         default:
             break;
     }
 }
-// 添加新的函数：专门为L2层级启动时钟定时器
+
+int screen_timer_start_l2_muyu_timers(void)
+{
+    // L2木鱼页面启动木鱼定时器
+    return screen_timer_start(SCREEN_TIMER_MUYU);
+}
+
+// 专门为L2层级启动时钟定时器
 int screen_timer_start_l2_timers(void)
 {
     int ret = 0;

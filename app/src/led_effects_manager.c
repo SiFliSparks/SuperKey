@@ -273,8 +273,6 @@ static void led_process_message(const led_message_t *msg)
                 uint32_t duration_ms = msg->data.led_feedback.duration_ms;
                 
                 if (led_index >= 0 && led_index < (int)g_led_mgr.actual_led_count) {
-                    rt_kprintf("[LED] High-priority feedback: LED%d=0x%06X for %ums\n", 
-                            led_index, color, duration_ms);
                     g_led_mgr.manual_led_mask[led_index] = false;
                     for (int i = 0; i < MAX_CONCURRENT_EFFECTS; i++) {
                         if (!g_led_mgr.effects[i].active) {

@@ -20,10 +20,10 @@ typedef enum {
     KEY_CTX_L2_WEB,
     KEY_CTX_L2_SHORTCUT,
     
-    /* 新增：Group 4实用工具上下文ID */
+    /*  Group 4实用工具上下文ID */
     KEY_CTX_UTILITIES,         /* Group 4：实用工具主界面 */
     
-    /* 新增：L2木鱼相关上下文ID */
+    /*  L2木鱼相关上下文ID */
     KEY_CTX_L2_MUYU,          /* L2：赛博木鱼界面 */
     KEY_CTX_L2_TOMATO,        /* L2：番茄钟界面（预留） */
     KEY_CTX_L2_GALLERY,       /* L2：全屏图片界面（预留） */

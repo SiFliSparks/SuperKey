@@ -41,8 +41,6 @@ static int screen_encoder_event_handler(const event_t *event, void *user_data)
                 if (steps > 0) {
                     // 顺时针：向后翻 steps 页
                     target = (current + steps) % SCREEN_GROUP_MAX;
-                    rt_kprintf("[ScreenEncoder] Clockwise %d steps: Group %d -> %d\n", 
-                               steps, current, target);
                 } else {
                     // 逆时针：向前翻 |steps| 页
                     // 处理负数取模
@@ -51,8 +49,6 @@ static int screen_encoder_event_handler(const event_t *event, void *user_data)
                         new_group += SCREEN_GROUP_MAX;
                     }
                     target = new_group % SCREEN_GROUP_MAX;
-                    rt_kprintf("[ScreenEncoder] Counter-clockwise %d steps: Group %d -> %d\n", 
-                               -steps, current, target);
                 }
                 
                 // 发布切换请求

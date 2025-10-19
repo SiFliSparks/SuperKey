@@ -149,7 +149,7 @@ int event_bus_get_stats(uint32_t *published_count, uint32_t *processed_count,
                        uint32_t *dropped_count, uint32_t *queue_size);
 int event_bus_cleanup(void);
 
-// 新增：增强功能
+//  增强功能
 int event_bus_enable_health_monitor(bool enable);
 uint32_t event_bus_get_error_count(void);
 int event_bus_reset_stats(void);

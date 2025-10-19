@@ -119,7 +119,7 @@ led_effect_handle_t led_effects_start_custom_effect(const char *name, const led_
 uint32_t led_effects_apply_brightness(uint32_t color, uint8_t brightness);
 uint32_t led_effects_interpolate_color(uint32_t color1, uint32_t color2, uint8_t ratio);
 
-/* 新增：系统状态查询函数 */
+/*  系统状态查询函数 */
 bool led_effects_is_initialized(void);
 int led_effects_get_led_count(void);
 

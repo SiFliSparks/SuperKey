@@ -6,6 +6,12 @@
 #include "event_bus.h"
 #include "led_effects_manager.h"
 #include "screen_ui_manager.h"
+#include <time.h>
+#include <string.h>
+#include "screen_core.h" 
+
+static rt_tick_t last_muyu_tap_time = 0;
+#define MUYU_DEBOUNCE_MS 100  // 100ms防抖
 /* LED映射函数 - 解决硬件映射问题 */
 static int get_led_index_for_key(int key_idx)
 {
@@ -53,11 +59,78 @@ static void check_and_restore_background(void)
         start_background_breathing_effect();
     }
 }
+//木鱼数据定义
+typedef struct {
+    uint32_t tap_count;
+    uint32_t total_taps;
+    rt_tick_t last_update_tick;
+} muyu_counter_t;
+
+static muyu_counter_t g_muyu_counter = {0};
+static rt_mutex_t g_muyu_counter_lock = NULL;
+static bool g_muyu_counter_initialized = false;
+
+
+// 初始化木鱼计数器
+void screen_context_init_muyu_counter(void)
+{
+    // 只在第一次创建互斥锁和初始化总计数
+    if (!g_muyu_counter_lock) {
+        g_muyu_counter_lock = rt_mutex_create("muyu_cnt", RT_IPC_FLAG_PRIO);
+        
+        if (g_muyu_counter_lock) {
+            // 第一次初始化时清零所有数据
+            memset(&g_muyu_counter, 0, sizeof(g_muyu_counter));
+            g_muyu_counter_initialized = true;
+        }
+    } else {
+        // 非第一次进入,只清零本次计数,保留总计数
+        rt_mutex_take(g_muyu_counter_lock, RT_WAITING_FOREVER);
+        g_muyu_counter.tap_count = 0;  // 清零本次计数
+        // g_muyu_counter.total_taps 永远不清零,保留累积值
+        g_muyu_counter.last_update_tick = rt_tick_get();
+        rt_mutex_release(g_muyu_counter_lock);
+    }
+}
+
+// 线程安全的计数增加
+static void muyu_increment_counter(void)
+{
+    if (!g_muyu_counter_lock) return;
+    
+    rt_mutex_take(g_muyu_counter_lock, RT_WAITING_FOREVER);
+    g_muyu_counter.tap_count++;  
+    g_muyu_counter.total_taps++;   
+    g_muyu_counter.last_update_tick = rt_tick_get();
+    rt_mutex_release(g_muyu_counter_lock);
+}
+
+// 线程安全的计数重置
+static void muyu_reset_counter(void)
+{
+    if (!g_muyu_counter_lock) return;
+    
+    rt_mutex_take(g_muyu_counter_lock, RT_WAITING_FOREVER);
+    g_muyu_counter.tap_count = 0;  // 只重置本次计数
+    g_muyu_counter.last_update_tick = rt_tick_get();
+    rt_mutex_release(g_muyu_counter_lock);
+}
+
+// 线程安全的获取计数
+static void muyu_get_counter(uint32_t *tap_count, uint32_t *total_taps)
+{
+    if (!g_muyu_counter_lock) return;
+    
+    rt_mutex_take(g_muyu_counter_lock, RT_WAITING_FOREVER);
+    if (tap_count) *tap_count = g_muyu_counter.tap_count;
+    if (total_taps) *total_taps = g_muyu_counter.total_taps;
+    rt_mutex_release(g_muyu_counter_lock);
+}
 
 /* 按键-LED映射定义 - 使用修正后的映射关系 */
 typedef struct {
     int key_index;
-    int led_index;  // 新增：实际LED索引
+    int led_index;  //  实际LED索引
     uint32_t color;
 } key_led_binding_t;
 
@@ -121,50 +194,8 @@ static void trigger_key_led_effect(int key_idx, const key_led_binding_t *binding
     
     int led_index = binding->led_index;
     
-    // 停止背景呼吸灯效果
-    if (g_background_breathing_effect) {
-        led_effects_stop_effect(g_background_breathing_effect);
-        g_background_breathing_effect = NULL;
-    }
-    
-    // 创建1秒按键特效配置
-    led_effect_config_t config = {
-        .type = LED_EFFECT_BREATHING,
-        .duration_ms = 1000,              // 持续1秒
-        .period_ms = 1000,                // 1秒完成一个呼吸周期
-        .brightness = 255,                // 最大亮度
-        .colors = {binding->color, LED_COLOR_OFF},
-        .color_count = 1,
-        .reverse = false,
-        .led_start = led_index,           // 使用修正后的LED索引
-        .led_count = 1,                   // 只控制一个LED
-        .custom_data = NULL
-    };
-    
-    // 启动按键特效
-    led_effect_handle_t handle = led_effects_start_effect(&config);
-    if (handle) {// 使用简化的定时器恢复机制
-        if (!g_delayed_restore_timer) {
-            g_delayed_restore_timer = rt_timer_create("restore_bg",
-                                                     restore_background_timer_callback,
-                                                     RT_NULL,
-                                                     rt_tick_from_millisecond(1200),
-                                                     RT_TIMER_FLAG_ONE_SHOT);
-        }
-        
-        if (g_delayed_restore_timer) {
-            rt_timer_start(g_delayed_restore_timer);
-        } else {
-            // 备用恢复机制：延迟恢复
-            rt_thread_mdelay(1200);
-            start_background_breathing_effect();
-        }
-        
-    } else {
-        // 如果特效启动失败，立即恢复背景呼吸灯
-        rt_thread_mdelay(100);
-        start_background_breathing_effect();
-    }
+    event_bus_publish_led_feedback(binding->led_index, binding->color, 1000);
+
 }
 
 /* 前向声明 */
@@ -279,7 +310,7 @@ static int screen_group3_key_handler(int key_idx, button_action_t action, void *
     trigger_key_led_effect(key_idx, group3_led_bindings, 
                           sizeof(group3_led_bindings)/sizeof(group3_led_bindings[0]));
     
-    // ⭐ 新增：按键功能实现
+    // ⭐  按键功能实现
     switch (key_idx) {
         case 0:
             // KEY1: 进入媒体控制L2页面
@@ -678,6 +709,9 @@ int screen_context_activate_for_level2(screen_l2_group_t l2_group)
             break;
 
         case SCREEN_L2_MUYU_GROUP:
+            // 初始化木鱼计数器(创建互斥锁)
+            screen_context_init_muyu_counter();
+            
             if (key_manager_get_context_name(KEY_CTX_L2_MUYU) == "UNREGISTERED") {
                 ret = key_manager_register_context(&g_l2_muyu_config);
                 if (ret != 0) {
@@ -708,14 +742,12 @@ int screen_context_deactivate_level2(void)
     return 0;
 }
 
-/* 初始化背景呼吸灯 - 在系统启动时调用 */
 int screen_context_init_background_breathing(void)
 {
     start_background_breathing_effect();
     return 0;
 }
 
-/* 停止背景呼吸灯 - 在系统关闭时调用 */
 int screen_context_cleanup_background_breathing(void)
 {
     if (g_background_breathing_effect) {
@@ -725,26 +757,20 @@ int screen_context_cleanup_background_breathing(void)
     return 0;
 }
 
-/* 手动恢复背景呼吸灯 - 紧急情况下使用 */
 int screen_context_restore_background_breathing(void)
 {
     start_background_breathing_effect();
     return 0;
 }
 
-/* 在主循环中调用，处理背景恢复 */
 void screen_context_process_background_restore(void)
 {
     check_and_restore_background();
 }
 
-/* 需要添加到screen_context.c文件中的新代码部分 */
-
-/* Group 4按键上下文处理函数的前向声明 - 添加到文件顶部 */
 static int screen_group4_key_handler(int key_idx, button_action_t action, void *user_data);
 static int screen_l2_muyu_key_handler(int key_idx, button_action_t action, void *user_data);
 
-/* Group 4按键LED绑定配置 - 添加到现有绑定配置数组后面 */
 static const key_led_binding_t group4_led_bindings[] = {
     {0, 2, 0xFFD700},   // 按键0 -> LED2: 金色呼吸（木鱼）
     {1, 1, 0xFF6347},   // 按键1 -> LED1: 番茄红呼吸（番茄钟）
@@ -773,7 +799,7 @@ static int screen_group4_key_handler(int key_idx, button_action_t action, void *
     trigger_key_led_effect(key_idx, group4_led_bindings, 
                           sizeof(group4_led_bindings)/sizeof(group4_led_bindings[0]));
     
-    // ⭐ 新增：按键功能实现
+    // ⭐  按键功能实现
     switch (key_idx) {
         case 0:
             // KEY1: 进入木鱼L2页面
@@ -799,36 +825,59 @@ static int screen_group4_key_handler(int key_idx, button_action_t action, void *
     return 0;
 }
 
-/* L2木鱼按键处理函数实现 - 修正按键映射 */
+
+/* L2木鱼按键处理函数实现 */
 static int screen_l2_muyu_key_handler(int key_idx, button_action_t action, void *user_data)
 {
     (void)user_data;
     
-    // 修复连击问题：只处理按下事件，忽略抬起事件
     if (action != BUTTON_PRESSED) {
         return 0;
     }
     
-    // 使用木鱼专用的LED特效
-    trigger_key_led_effect(key_idx, l2_muyu_led_bindings, 
-                          sizeof(l2_muyu_led_bindings)/sizeof(l2_muyu_led_bindings[0]));
+    // 防抖处理
+    rt_tick_t now = rt_tick_get();
+    if (key_idx == 0 && (now - last_muyu_tap_time) < rt_tick_from_millisecond(MUYU_DEBOUNCE_MS)) {
+        return 0;  // 忽略过快的按键
+    }
+    
+    // LED特效(异步)
+    const key_led_binding_t *binding = NULL;
+    for (int i = 0; i < sizeof(l2_muyu_led_bindings)/sizeof(l2_muyu_led_bindings[0]); i++) {
+        if (l2_muyu_led_bindings[i].key_index == key_idx) {
+            binding = &l2_muyu_led_bindings[i];
+            break;
+        }
+    }
+    
+    if (binding) {
+        event_bus_publish_led_feedback(binding->led_index, binding->color, 800);
+    }
     
     switch (key_idx) {
         case 0:
-            // KEY1触发木鱼敲击
-            screen_context_handle_muyu_tap();
+            // KEY1: 计数并立即触发UI更新
+            last_muyu_tap_time = now;
+            muyu_increment_counter();
+            
+            // 立即通过消息队列请求UI更新(线程安全)
+            screen_core_post_update_time();
             break;
             
         case 1:
-            // KEY2触发重置
-            screen_context_handle_muyu_reset();
+            // KEY2: 只做重置,不调用UI
+            muyu_reset_counter();
+            
+            // 【关键修复】立即通过消息队列请求UI更新(线程安全)
+            screen_core_post_update_time();
             break;
             
         case 2:
-            // 预留：音效开关、自动保存等设置
+            // KEY3: 预留
             break;
             
         case 3:
+            // KEY4: 返回L1
             screen_return_to_level1();
             break;
     }
@@ -836,92 +885,20 @@ static int screen_l2_muyu_key_handler(int key_idx, button_action_t action, void 
 }
 
 
-/* 木鱼敲击事件处理实现 */
-int screen_context_handle_muyu_tap(void)
-{
-    
-    // 调用UI管理器的木鱼敲击处理
-    int ret = screen_ui_muyu_tap_event();
-    if (ret != 0) {
-        return ret;
-    }
-    
-    // 触发特殊的木鱼敲击LED特效（金色短暂闪烁）
-    if (g_background_breathing_effect) {
-        led_effects_stop_effect(g_background_breathing_effect);
-        g_background_breathing_effect = NULL;
-    }
-    
-    // 创建木鱼专用的金色闪烁特效
-    led_effect_config_t muyu_effect_config = {
-        .type = LED_EFFECT_BREATHING,
-        .duration_ms = 800,               // 更短的持续时间，更快响应
-        .period_ms = 400,                 // 更快的呼吸频率
-        .brightness = 255,                // 最大亮度
-        .colors = {0xFFD700, LED_COLOR_OFF}, // 金色
-        .color_count = 1,
-        .reverse = false,
-        .led_start = 0,                   // 所有LED
-        .led_count = 3,                   // 三个LED同时
-        .custom_data = NULL
-    };
-    
-    led_effect_handle_t muyu_effect = led_effects_start_effect(&muyu_effect_config);
-    if (muyu_effect) {
-        
-        // 设置更短的恢复时间
-        if (g_delayed_restore_timer) {
-            rt_tick_t new_timeout = rt_tick_from_millisecond(1000);
-            rt_timer_control(g_delayed_restore_timer, RT_TIMER_CTRL_SET_TIME, &new_timeout);
-            rt_timer_start(g_delayed_restore_timer);
-        }
-    } else {
-        // 立即恢复背景
-        start_background_breathing_effect();
-    }
-    return 0;
-}
-
 /* 木鱼重置事件处理实现 */
 int screen_context_handle_muyu_reset(void)
 {
-    
-    // 调用UI管理器的重置处理
-    int ret = screen_ui_reset_muyu_counter();
-    if (ret != 0) {
-        return ret;
-    }
-    
-    // 触发重置确认LED特效（红色短暂闪烁）
-    if (g_background_breathing_effect) {
-        led_effects_stop_effect(g_background_breathing_effect);
-        g_background_breathing_effect = NULL;
-    }
-    
-    // 红色重置确认特效
-    led_effect_config_t reset_effect_config = {
-        .type = LED_EFFECT_BREATHING,
-        .duration_ms = 1000,
-        .period_ms = 500,
-        .brightness = 255,
-        .colors = {RGB_COLOR_RED, LED_COLOR_OFF},
-        .color_count = 1,
-        .reverse = false,
-        .led_start = 0,
-        .led_count = 3,
-        .custom_data = NULL
-    };
-    
-    led_effect_handle_t reset_effect = led_effects_start_effect(&reset_effect_config);
-    if (reset_effect) {
-    }
-    
-    // 恢复背景
-    if (g_delayed_restore_timer) {
-        rt_tick_t new_timeout = rt_tick_from_millisecond(1200);
-        rt_timer_control(g_delayed_restore_timer, RT_TIMER_CTRL_SET_TIME, &new_timeout);
-        rt_timer_start(g_delayed_restore_timer);
-    }
+    muyu_reset_counter();   
     return 0;
 }
 
+/* 获取木鱼计数 - 公共接口 */
+int screen_context_get_muyu_count(uint32_t *tap_count, uint32_t *total_taps)
+{
+    if (!tap_count && !total_taps) {
+        return -RT_EINVAL;
+    }
+    
+    muyu_get_counter(tap_count, total_taps);
+    return 0;
+}

@@ -16,6 +16,7 @@ typedef enum {
     SCREEN_TIMER_STOCK,          /* 股票更新 - 10秒 */
     SCREEN_TIMER_SYSTEM,         /* 系统监控 - 2秒 */
     SCREEN_TIMER_SENSOR,         /* 传感器 - 5秒 */
+    SCREEN_TIMER_MUYU,           /* 木鱼 - 0.2秒 */
     SCREEN_TIMER_CLEANUP,        /* 清理 - 60秒 */
     SCREEN_TIMER_MAX
 } screen_timer_type_t;
@@ -70,6 +71,13 @@ int screen_timer_get_status_string(char *buffer, size_t buffer_size);
  * @return 0成功，负数失败
  */
 int screen_timer_start_l2_timers(void);
+
+// 在文件末尾添加函数声明
+/**
+ * @brief 启动L2木鱼页面定时器
+ * @return 0成功，负数失败
+ */
+int screen_timer_start_l2_muyu_timers(void);
 
 #ifdef __cplusplus
 }

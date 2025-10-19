@@ -27,7 +27,7 @@ static struct {
     rt_mutex_t stats_lock;
     bool initialized;
     
-    // 新增：错误恢复相关
+    //  错误恢复相关
     uint32_t error_count;
     rt_tick_t last_health_check;
     bool health_monitor_enabled;
@@ -731,20 +731,20 @@ int event_bus_publish_led_feedback(int led_index, uint32_t color, uint32_t durat
     return (result == RT_EOK) ? 0 : -RT_ERROR;
 }
 
-/* 新增：启用/禁用健康监控 */
+/*  启用/禁用健康监控 */
 int event_bus_enable_health_monitor(bool enable)
 {
     g_event_bus.health_monitor_enabled = enable;
     return 0;
 }
 
-/* 新增：获取错误统计 */
+/*  获取错误统计 */
 uint32_t event_bus_get_error_count(void)
 {
     return g_event_bus.error_count;
 }
 
-/* 新增：重置统计 */
+/*  重置统计 */
 int event_bus_reset_stats(void)
 {
     if (!g_event_bus.initialized) {

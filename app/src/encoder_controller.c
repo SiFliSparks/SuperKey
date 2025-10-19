@@ -46,8 +46,6 @@ static void encoder_polling_timer_cb(void *parameter)
         
         // 计算原始脉冲变化量
         int32_t raw_delta = current_count - g_encoder.last_count;
-        
-        // ✅ 关键修改：阈值过滤
         // 只处理绝对值 >= 3 的变化
         if (raw_delta != 0) {
             int32_t abs_delta = (raw_delta > 0) ? raw_delta : -raw_delta;
@@ -59,9 +57,6 @@ static void encoder_polling_timer_cb(void *parameter)
                 // 最小50ms间隔，用于过滤机械抖动
                 if (time_since_last >= rt_tick_from_millisecond(ENCODER_MIN_EVENT_INTERVAL_MS)) {
                     
-                    // 计算格数：每3个脉冲算作1格
-                    // 例如：raw_delta=7 → delta=2格（7/3=2余1）
-                    //       raw_delta=-5 → delta=-1格（-5/3=-1余-2）
                     int32_t delta = raw_delta / ENCODER_PULSE_THRESHOLD;
                     
                     // 保留余数，避免丢失脉冲

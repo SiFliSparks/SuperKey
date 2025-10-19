@@ -10,7 +10,7 @@ objs_ezip = []
 
 objs_ezip += Glob('*.png')
 objs_ezip += Glob('./time_style1/*.png')
-
+objs_ezip += Glob('./weather/*.png')
 
 def align_to_power_of_two_and_str(num):
     power = 1

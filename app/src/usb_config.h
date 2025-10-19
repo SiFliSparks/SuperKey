@@ -32,7 +32,7 @@
 #define CONFIG_USBDEV_REQUEST_BUFFER_LEN 256
 #endif
 
-/* enable advance desc register api - 必须启用 */
+/* enable advance desc register api */
 #define CONFIG_USBDEV_ADVANCE_DESC
 
 /* ================= USB Device Port Configuration ================*/
@@ -46,10 +46,6 @@
 #endif
 
 /* ================= USB Host Stack Configuration ================ */
-/* 
- * 重要说明：由于CherryUSB的架构问题，某些底层文件会无条件包含USB Host头文件
- * 因此我们必须定义这些宏以避免编译错误，即使我们不使用USB Host功能
- */
 
 /* USB Host相关配置 - 定义为最小值以节省内存 */
 #ifndef CONFIG_USBHOST_MAX_ENDPOINTS
@@ -76,7 +72,6 @@
 #define CONFIG_USBHOST_MAX_BUS 1
 #endif
 
-/* 其他可能需要的USB Host配置 */
 #ifndef CONFIG_USBHOST_MAX_EXTHUBS
 #define CONFIG_USBHOST_MAX_EXTHUBS 1
 #endif
@@ -105,7 +100,6 @@
 #define CONFIG_USB_MUSB_SIFLI
 
 /* ================= MUSB 端点配置 ================ */
-/* 这是解决编译错误的关键配置 */
 #ifndef CONFIG_USB_MUSB_EP_NUM
 #define CONFIG_USB_MUSB_EP_NUM 8
 #endif
@@ -116,11 +110,6 @@
 /* ================= HID Device Configuration ================ */
 #ifndef CONFIG_USBDEV_HID_MAX_INTF
 #define CONFIG_USBDEV_HID_MAX_INTF 1
-#endif
-
-/* HID Descriptor Type - CherryUSB内部已定义，这里只是为了兼容性 */
-#ifndef HID_DESCRIPTOR_TYPE_HID
-#define HID_DESCRIPTOR_TYPE_HID 0x21
 #endif
 
 /* USB Memory Alignment Macros */
