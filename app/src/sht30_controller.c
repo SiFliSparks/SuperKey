@@ -76,14 +76,6 @@ static float calculate_enthalpy(float temp_c, float rh)
     return temp_c * (1.006 + 1.86 * x) + 2500 * x;
 }
 
-static rt_err_t sht30_configure_pins(void)
-{
-    rt_thread_mdelay(100);
-    HAL_PIN_Set(SHT30_SCL_PAD, I2C2_SCL, PIN_PULLUP, 1);
-    HAL_PIN_Set(SHT30_SDA_PAD, I2C2_SDA, PIN_PULLUP, 1);
-    rt_thread_mdelay(50);
-    return RT_EOK;
-}
 
 static rt_err_t sht30_read_raw(uint8_t *data)
 {
@@ -237,11 +229,6 @@ int sht30_controller_init(void)
 {
     if (g_sht30.initialized) {
         return RT_EOK;
-    }
-    
-
-    if (sht30_configure_pins() != RT_EOK) {
-        return -RT_ERROR;
     }
 
     g_sht30.i2c_bus = rt_i2c_bus_device_find(SHT30_I2C_BUS);

@@ -1,8 +1,3 @@
-/**
- * @file screen_ui_manager.c - 修复编译错误版本
- * @brief 线程安全的UI管理器实现 - 修复g_core访问问题
- */
-
 #include "screen_ui_manager.h"
 #include "screen_core.h"
 #include "data_manager.h"
@@ -12,7 +7,7 @@
 #include <rtthread.h>
 #include <time.h>
 #include <string.h>
-
+#include <stdio.h>
 /*********************
  *      DEFINES
  *********************/
@@ -37,7 +32,9 @@ static const char* chinese_months[] = {
 static const char* chinese_weekdays[] = {
     "周日", "周一", "周二", "周三", "周四", "周五", "周六"
 };
-
+static bool is_showing_tomato_mode(void);
+static int screen_ui_update_time_display_normal_mode(void);
+static int screen_ui_update_time_display_tomato_mode(void);
 /* 外部字体数据声明 */
 extern const unsigned char xiaozhi_font[];
 extern const int xiaozhi_font_size;
@@ -172,6 +169,13 @@ static struct {
     uint8_t cpu_index;
     uint8_t gpu_index;
 } chart_history = {0};
+/* 番茄钟后台显示轮换状态 */
+static struct {
+    bool enabled;               // 是否启用轮换
+    bool show_tomato;          // true=显示番茄钟, false=显示正常时间
+    rt_timer_t switch_timer;   // 切换定时器
+    rt_tick_t last_switch_tick;
+} g_tomato_background_display = {0};
 /*********************
  *  STATIC PROTOTYPES
  *********************/
@@ -462,7 +466,10 @@ static void safe_cleanup_ui_objects(void)
     
     // 清空L2数字时钟句柄
     memset(&g_ui_mgr.handles.l2_digital_clock, 0, sizeof(g_ui_mgr.handles.l2_digital_clock));
-
+    memset(&g_ui_mgr.handles.l2_weather_forecast, 0, sizeof(g_ui_mgr.handles.l2_weather_forecast));
+    memset(&g_ui_mgr.handles.l2_tomato_timer, 0, sizeof(g_ui_mgr.handles.l2_tomato_timer));
+    memset(&g_ui_mgr.handles.l2_muyu_main, 0, sizeof(g_ui_mgr.handles.l2_muyu_main));
+    memset(&g_ui_mgr.handles.l2_stopwatch_timer, 0, sizeof(g_ui_mgr.handles.l2_stopwatch_timer));
     lv_timer_handler(); /* 处理清理操作 */
 }
 
@@ -628,6 +635,185 @@ static void build_right_stock_panel(lv_obj_t *parent)
     lv_obj_add_style(g_ui_mgr.handles.group1_stock.update_time_label, &g_ui_mgr.handles.style_xsmall, 0);
     lv_obj_set_style_text_color(g_ui_mgr.handles.group1_stock.update_time_label, lv_color_make(120, 120, 120), 0);
     lv_obj_align(g_ui_mgr.handles.group1_stock.update_time_label, LV_ALIGN_BOTTOM_MID, 0, 0);
+}
+
+static void build_forecast_day_panel(lv_obj_t *parent, const char *day_title,
+                                     lv_obj_t **title, lv_obj_t **weather,
+                                     lv_obj_t **temp_max, lv_obj_t **temp_min,
+                                     lv_obj_t **wind_dir, lv_obj_t **wind_scale)
+{
+    /* 标题 */
+    *title = lv_label_create(parent);
+    lv_label_set_text(*title, day_title);
+    lv_obj_add_style(*title, &g_ui_mgr.handles.style_large, 0);
+    lv_obj_set_style_text_color(*title, lv_color_make(100, 200, 255), 0);
+    lv_obj_align(*title, LV_ALIGN_TOP_MID, 0, 5);
+    
+    /* 天气描述 */
+    *weather = lv_label_create(parent);
+    lv_label_set_text(*weather, "---");
+    lv_obj_add_style(*weather, &g_ui_mgr.handles.style_xxlarge, 0);
+    lv_obj_set_style_text_color(*weather, lv_color_white(), 0);
+    lv_obj_align(*weather, LV_ALIGN_CENTER, 0, -30);
+    
+    /* 最高温度 */
+    *temp_max = lv_label_create(parent);
+    lv_label_set_text(*temp_max, "最高--°C");
+    lv_obj_add_style(*temp_max, &g_ui_mgr.handles.style_medium, 0);
+    lv_obj_set_style_text_color(*temp_max, lv_color_make(255, 100, 100), 0);
+    lv_obj_align(*temp_max, LV_ALIGN_CENTER, 0, 10);
+    
+    /* 最低温度 */
+    *temp_min = lv_label_create(parent);
+    lv_label_set_text(*temp_min, "最低--°C");
+    lv_obj_add_style(*temp_min, &g_ui_mgr.handles.style_medium, 0);
+    lv_obj_set_style_text_color(*temp_min, lv_color_make(100, 150, 255), 0);
+    lv_obj_align(*temp_min, LV_ALIGN_CENTER, 0, 35);
+    
+    /* 风向 */
+    *wind_dir = lv_label_create(parent);
+    lv_label_set_text(*wind_dir, "---");
+    lv_obj_add_style(*wind_dir, &g_ui_mgr.handles.style_small, 0);
+    lv_obj_set_style_text_color(*wind_dir, lv_color_make(180, 180, 180), 0);
+    lv_obj_align(*wind_dir, LV_ALIGN_BOTTOM_MID, 0, -25);
+    
+    /* 风力等级 */
+    *wind_scale = lv_label_create(parent);
+    lv_label_set_text(*wind_scale, "---");
+    lv_obj_add_style(*wind_scale, &g_ui_mgr.handles.style_small, 0);
+    lv_obj_set_style_text_color(*wind_scale, lv_color_make(180, 180, 180), 0);
+    lv_obj_align(*wind_scale, LV_ALIGN_BOTTOM_MID, 0, -10);
+}
+
+/**
+ * @brief 构建L2天气预报详情页（三屏显示三天天气）
+ */
+static void build_l2_weather_forecast_page(void)
+{
+    /* 清理 */
+    safe_cleanup_ui_objects();
+    
+    /* 左屏：今天 */
+    build_forecast_day_panel(
+        g_ui_mgr.handles.left_panel, "今天",
+        &g_ui_mgr.handles.l2_weather_forecast.day0_title,
+        &g_ui_mgr.handles.l2_weather_forecast.day0_weather,
+        &g_ui_mgr.handles.l2_weather_forecast.day0_temp_max,
+        &g_ui_mgr.handles.l2_weather_forecast.day0_temp_min,
+        &g_ui_mgr.handles.l2_weather_forecast.day0_wind_dir,
+        &g_ui_mgr.handles.l2_weather_forecast.day0_wind_scale
+    );
+    
+    /* 中屏：明天 */
+    build_forecast_day_panel(
+        g_ui_mgr.handles.middle_panel, "明天",
+        &g_ui_mgr.handles.l2_weather_forecast.day1_title,
+        &g_ui_mgr.handles.l2_weather_forecast.day1_weather,
+        &g_ui_mgr.handles.l2_weather_forecast.day1_temp_max,
+        &g_ui_mgr.handles.l2_weather_forecast.day1_temp_min,
+        &g_ui_mgr.handles.l2_weather_forecast.day1_wind_dir,
+        &g_ui_mgr.handles.l2_weather_forecast.day1_wind_scale
+    );
+    
+    /* 右屏：后天 */
+    build_forecast_day_panel(
+        g_ui_mgr.handles.right_panel, "后天",
+        &g_ui_mgr.handles.l2_weather_forecast.day2_title,
+        &g_ui_mgr.handles.l2_weather_forecast.day2_weather,
+        &g_ui_mgr.handles.l2_weather_forecast.day2_temp_max,
+        &g_ui_mgr.handles.l2_weather_forecast.day2_temp_min,
+        &g_ui_mgr.handles.l2_weather_forecast.day2_wind_dir,
+        &g_ui_mgr.handles.l2_weather_forecast.day2_wind_scale
+    );
+
+    
+    /* 获取并显示数据 */
+    weather_forecast_data_t forecast;
+    if (data_manager_get_forecast(&forecast) == 0 && forecast.valid) {
+        screen_ui_update_l2_weather_forecast(&forecast);
+    }
+}
+
+int screen_ui_update_l2_weather_forecast(const weather_forecast_data_t *forecast)
+{
+    if (!forecast || !forecast->valid || !g_ui_mgr.initialized) {
+        return -RT_ERROR;
+    }
+    
+    /* 检查是否在天气预报页面 */
+    if (!g_ui_mgr.handles.l2_weather_forecast.day0_weather ||
+        !lv_obj_is_valid(g_ui_mgr.handles.l2_weather_forecast.day0_weather)) {
+        return 0;
+    }
+    
+    char buf[64];
+    
+    /* 更新今天 */
+    if (forecast->day0.valid) {
+        lv_label_set_text(g_ui_mgr.handles.l2_weather_forecast.day0_weather, forecast->day0.text);
+        
+        snprintf(buf, sizeof(buf), "最高%d°C", forecast->day0.temp_max);
+        lv_label_set_text(g_ui_mgr.handles.l2_weather_forecast.day0_temp_max, buf);
+        
+        snprintf(buf, sizeof(buf), "最低%d°C", forecast->day0.temp_min);
+        lv_label_set_text(g_ui_mgr.handles.l2_weather_forecast.day0_temp_min, buf);
+        
+        lv_label_set_text(g_ui_mgr.handles.l2_weather_forecast.day0_wind_dir, forecast->day0.wind_dir);
+        
+        snprintf(buf, sizeof(buf), "%s级", forecast->day0.wind_scale);
+        lv_label_set_text(g_ui_mgr.handles.l2_weather_forecast.day0_wind_scale, buf);
+    }
+    
+    /* 更新明天 */
+    if (forecast->day1.valid) {
+        lv_label_set_text(g_ui_mgr.handles.l2_weather_forecast.day1_weather, forecast->day1.text);
+        
+        snprintf(buf, sizeof(buf), "最高%d°C", forecast->day1.temp_max);
+        lv_label_set_text(g_ui_mgr.handles.l2_weather_forecast.day1_temp_max, buf);
+        
+        snprintf(buf, sizeof(buf), "最低%d°C", forecast->day1.temp_min);
+        lv_label_set_text(g_ui_mgr.handles.l2_weather_forecast.day1_temp_min, buf);
+        
+        lv_label_set_text(g_ui_mgr.handles.l2_weather_forecast.day1_wind_dir, forecast->day1.wind_dir);
+        
+        snprintf(buf, sizeof(buf), "%s级", forecast->day1.wind_scale);
+        lv_label_set_text(g_ui_mgr.handles.l2_weather_forecast.day1_wind_scale, buf);
+    }
+    
+    /* 更新后天 */
+    if (forecast->day2.valid) {
+        lv_label_set_text(g_ui_mgr.handles.l2_weather_forecast.day2_weather, forecast->day2.text);
+        
+        snprintf(buf, sizeof(buf), "最高%d°C", forecast->day2.temp_max);
+        lv_label_set_text(g_ui_mgr.handles.l2_weather_forecast.day2_temp_max, buf);
+        
+        snprintf(buf, sizeof(buf), "最低%d°C", forecast->day2.temp_min);
+        lv_label_set_text(g_ui_mgr.handles.l2_weather_forecast.day2_temp_min, buf);
+        
+        lv_label_set_text(g_ui_mgr.handles.l2_weather_forecast.day2_wind_dir, forecast->day2.wind_dir);
+        
+        snprintf(buf, sizeof(buf), "%s级", forecast->day2.wind_scale);
+        lv_label_set_text(g_ui_mgr.handles.l2_weather_forecast.day2_wind_scale, buf);
+    }
+    
+    return 0;
+}
+
+int screen_ui_build_l2_weather(void)
+{
+    if (!g_ui_mgr.initialized) {
+        return -RT_ERROR;
+    }
+    
+    build_l2_weather_forecast_page();
+    
+    g_ui_mgr.current_level = SCREEN_LEVEL_2;
+    
+    /* 激活L2按键上下文 */
+    screen_context_activate_for_level2(SCREEN_L2_WEATHER_GROUP);
+    
+    lv_obj_invalidate(lv_scr_act());
+    return 0;
 }
 
 /*********************
@@ -811,6 +997,9 @@ static lv_obj_t* create_usage_chart(lv_obj_t *parent, lv_color_t color)
     return container;
 }
 
+
+
+
 /**
  * 更新图表数据 - 添加新数据点并滚动
  * @param chart 图表对象
@@ -958,7 +1147,7 @@ static lv_obj_t* create_digit_image(lv_obj_t *parent, int digit, lv_coord_t x_of
     // 设置图片资源
     lv_img_set_src(img, get_digit_image(digit));
     
-    /* 极致优化1: 最大化图片容器尺寸 - 占用几乎全部显示区域 */
+    /* 最大化图片容器尺寸 - 占用几乎全部显示区域 */
     lv_coord_t img_width = (lv_coord_t)(SCREEN_WIDTH * 0.5f);    // 64像素，占满一半板块
     lv_coord_t img_height = (lv_coord_t)(SCREEN_HEIGHT * 1.0f);  // 128像素，占满整个高度
     lv_obj_set_size(img, img_width, img_height);
@@ -966,7 +1155,7 @@ static lv_obj_t* create_digit_image(lv_obj_t *parent, int digit, lv_coord_t x_of
     // 设置位置 - 无边距，完全贴边
     lv_obj_set_pos(img, x_offset, y_offset);
     
-    /* 极致优化2: 激进缩放 - 在原有基础上再放大50% */
+    /* 激进缩放 - 在原有基础上再放大50% */
     float max_scale = g_ui_mgr.scale_factor * 1.5f;  // 激进放大50%
     
     // 扩大缩放范围限制
@@ -1017,7 +1206,7 @@ static void build_l2_time_detail_page(void)
     int min = tm_info ? tm_info->tm_min : 0;
     int sec = tm_info ? tm_info->tm_sec : 0;
     
-    /* 极致优化：零间距布局 - 数字完全贴边显示 */
+    /* 零间距布局 - 数字完全贴边显示 */
     lv_coord_t no_spacing = 0;        // 完全无间距
     lv_coord_t no_offset = 0;         // 完全无偏移
     
@@ -1281,7 +1470,12 @@ int screen_ui_manager_deinit(void)
     if (!g_ui_mgr.initialized) {
         return 0;
     }
-
+    if (g_tomato_background_display.switch_timer) {
+        rt_timer_stop(g_tomato_background_display.switch_timer);
+        rt_timer_delete(g_tomato_background_display.switch_timer);
+        g_tomato_background_display.switch_timer = NULL;
+    }
+    
     cleanup_base_ui();
     cleanup_fonts();
     
@@ -1471,8 +1665,10 @@ int screen_ui_switch_to_l2(screen_l2_group_t l2_group, screen_l2_page_t l2_page)
             return screen_ui_build_l2_muyu();
         case SCREEN_L2_TOMATO_GROUP:
             return screen_ui_build_l2_tomato();
-        case SCREEN_L2_GALLERY_GROUP:
-            return screen_ui_build_l2_gallery();
+        case SCREEN_L2_STOPWATCH_GROUP:
+            return screen_ui_build_l2_stopwatch();
+        case SCREEN_L2_WEATHER_GROUP:
+            return screen_ui_build_l2_weather();
         default:
             return -RT_EINVAL;
     }
@@ -1497,56 +1693,41 @@ int screen_ui_update_time_display(void)
         return 0;
     }
     
+    // 检查是否在木鱼页面
     if (g_ui_mgr.handles.l2_muyu_main.counter_label && 
         lv_obj_is_valid(g_ui_mgr.handles.l2_muyu_main.counter_label)) {
-        // 在木鱼页面,调用木鱼更新函数
         return screen_ui_update_muyu_display();
     }
+    
+    // 检查是否在数字时钟页面
     if (g_ui_mgr.handles.l2_digital_clock.hour_tens && 
         lv_obj_is_valid(g_ui_mgr.handles.l2_digital_clock.hour_tens)) {
-        // 数字时钟UI存在，更新数字时钟
         return screen_ui_update_l2_digital_clock();
     }
     
-    // L1层级的常规时间显示更新
+    // 检查是否在番茄钟页面
+    if (g_ui_mgr.handles.l2_tomato_timer.timer_label && 
+        lv_obj_is_valid(g_ui_mgr.handles.l2_tomato_timer.timer_label)) {
+        return screen_ui_update_tomato_display();
+    }
+
+    // 检查是否在秒表页面
+    if (g_ui_mgr.handles.l2_stopwatch_timer.time_label && 
+        lv_obj_is_valid(g_ui_mgr.handles.l2_stopwatch_timer.time_label)) {
+        return screen_ui_update_stopwatch_display();
+    }
+
+    // ✅ L1 Group1时间显示 - 支持番茄钟后台轮换
     if (g_ui_mgr.current_group != SCREEN_GROUP_1) {
         return 0;
     }
     
-    time_t now = time(NULL);
-    if (now == (time_t)-1) return -1;
-    
-    struct tm *tm_info = localtime(&now);
-    if (!tm_info) return -1;
-
-    /* 更新年份 */
-    if (g_ui_mgr.handles.group1_time.year_label && lv_obj_is_valid(g_ui_mgr.handles.group1_time.year_label)) {
-        char year_str[16];
-        rt_snprintf(year_str, sizeof(year_str), "%d年", tm_info->tm_year + 1900);
-        lv_label_set_text(g_ui_mgr.handles.group1_time.year_label, year_str);
+    // ✅ 检查是否应该显示番茄钟模式
+    if (is_showing_tomato_mode()) {
+        return screen_ui_update_time_display_tomato_mode();
+    } else {
+        return screen_ui_update_time_display_normal_mode();
     }
-
-    /* 更新时间 */
-    if (g_ui_mgr.handles.group1_time.time_label && lv_obj_is_valid(g_ui_mgr.handles.group1_time.time_label)) {
-        char time_str[16];
-        rt_snprintf(time_str, sizeof(time_str), "%02d:%02d", tm_info->tm_hour, tm_info->tm_min);
-        lv_label_set_text(g_ui_mgr.handles.group1_time.time_label, time_str);
-    }
-
-    /* 更新中文日期 */
-    if (g_ui_mgr.handles.group1_time.date_label && lv_obj_is_valid(g_ui_mgr.handles.group1_time.date_label)) {
-        char date_str[32];
-        rt_snprintf(date_str, sizeof(date_str), "%s%d日", 
-                   chinese_months[tm_info->tm_mon], tm_info->tm_mday);
-        lv_label_set_text(g_ui_mgr.handles.group1_time.date_label, date_str);
-    }
-
-    /* 更新中文星期 */
-    if (g_ui_mgr.handles.group1_time.weekday_label && lv_obj_is_valid(g_ui_mgr.handles.group1_time.weekday_label)) {
-        lv_label_set_text(g_ui_mgr.handles.group1_time.weekday_label, chinese_weekdays[tm_info->tm_wday]);
-    }
-
-    return 0;
 }
 
 int screen_ui_update_weather_display(const weather_data_t *data)
@@ -1901,20 +2082,20 @@ static void build_middle_tomato_panel(lv_obj_t *parent)
 /**
  * 构建右屏 - 计时器面板
  */
-static void build_right_gallery_panel(lv_obj_t *parent)
+static void build_right_stopwatch_panel(lv_obj_t *parent)
 {
     /* 计时器图片入口 - 上半部分居中 */
-    g_ui_mgr.handles.group4_gallery.gallery_icon = create_entrance_icon(parent, get_calculagraph_image());
-    if (g_ui_mgr.handles.group4_gallery.gallery_icon) {
-        lv_obj_align(g_ui_mgr.handles.group4_gallery.gallery_icon, LV_ALIGN_CENTER, 0, -10);
+    g_ui_mgr.handles.group4_stopwatch.stopwatch_icon = create_entrance_icon(parent, get_calculagraph_image());
+    if (g_ui_mgr.handles.group4_stopwatch.stopwatch_icon) {
+        lv_obj_align(g_ui_mgr.handles.group4_stopwatch.stopwatch_icon, LV_ALIGN_CENTER, 0, -10);
     }
     
     /* 功能提示 - 底部小字 */
-    g_ui_mgr.handles.group4_gallery.gallery_hint = lv_label_create(parent);
-    lv_label_set_text(g_ui_mgr.handles.group4_gallery.gallery_hint, "计时器");
-    lv_obj_add_style(g_ui_mgr.handles.group4_gallery.gallery_hint, &g_ui_mgr.handles.style_small, 0);
-    lv_obj_set_style_text_color(g_ui_mgr.handles.group4_gallery.gallery_hint, lv_color_make(200, 200, 200), 0);
-    lv_obj_align(g_ui_mgr.handles.group4_gallery.gallery_hint, LV_ALIGN_BOTTOM_MID, 0, -5);
+    g_ui_mgr.handles.group4_stopwatch.stopwatch_hint = lv_label_create(parent);
+    lv_label_set_text(g_ui_mgr.handles.group4_stopwatch.stopwatch_hint, "计时器");
+    lv_obj_add_style(g_ui_mgr.handles.group4_stopwatch.stopwatch_hint, &g_ui_mgr.handles.style_small, 0);
+    lv_obj_set_style_text_color(g_ui_mgr.handles.group4_stopwatch.stopwatch_hint, lv_color_make(200, 200, 200), 0);
+    lv_obj_align(g_ui_mgr.handles.group4_stopwatch.stopwatch_hint, LV_ALIGN_BOTTOM_MID, 0, -5);
 }
 /**
  * 创建入口图标(通用函数)
@@ -2207,7 +2388,7 @@ int screen_ui_build_group4(void)
     
     build_left_muyu_panel(g_ui_mgr.handles.left_panel);
     build_middle_tomato_panel(g_ui_mgr.handles.middle_panel);
-    build_right_gallery_panel(g_ui_mgr.handles.right_panel);
+    build_right_stopwatch_panel(g_ui_mgr.handles.right_panel);
     
     g_ui_mgr.current_group = SCREEN_GROUP_4;
     g_ui_mgr.current_level = SCREEN_LEVEL_1;
@@ -2246,39 +2427,224 @@ int screen_ui_build_l2_tomato(void)
 
     safe_cleanup_ui_objects();
     
-    // 临时显示"开发中"界面
-    lv_obj_t *temp_label = lv_label_create(g_ui_mgr.handles.middle_panel);
-    lv_label_set_text(temp_label, "番茄钟\n开发中...");
-    lv_obj_add_style(temp_label, &g_ui_mgr.handles.style_xlarge, 0);
-    lv_obj_set_style_text_color(temp_label, lv_color_white(), 0);
-    lv_obj_align(temp_label, LV_ALIGN_CENTER, 0, 0);
+    // 初始化番茄钟数据
+    screen_context_init_tomato_data();
+    
+    // ========== 左屏: 模式和状态显示 ==========
+    lv_obj_t *left = g_ui_mgr.handles.left_panel;
+    
+    // 模式标题
+    g_ui_mgr.handles.l2_tomato_timer.mode_label = lv_label_create(left);
+    lv_label_set_text(g_ui_mgr.handles.l2_tomato_timer.mode_label, "专注");
+    lv_obj_add_style(g_ui_mgr.handles.l2_tomato_timer.mode_label, 
+                     &g_ui_mgr.handles.style_xlarge, 0);
+    lv_obj_set_style_text_color(g_ui_mgr.handles.l2_tomato_timer.mode_label, 
+                                lv_color_make(255, 99, 71), 0);  // 番茄红
+    lv_obj_align(g_ui_mgr.handles.l2_tomato_timer.mode_label, LV_ALIGN_TOP_MID, 0, SCALE_DPX(10));
+    
+    // 状态提示
+    g_ui_mgr.handles.l2_tomato_timer.state_label = lv_label_create(left);
+    lv_label_set_text(g_ui_mgr.handles.l2_tomato_timer.state_label, "待机");
+    lv_obj_add_style(g_ui_mgr.handles.l2_tomato_timer.state_label, 
+                     &g_ui_mgr.handles.style_medium, 0);
+    lv_obj_set_style_text_color(g_ui_mgr.handles.l2_tomato_timer.state_label, 
+                                lv_color_white(), 0);
+    lv_obj_align(g_ui_mgr.handles.l2_tomato_timer.state_label, LV_ALIGN_CENTER, 0, 0);
+    
+    // 轮次显示
+    g_ui_mgr.handles.l2_tomato_timer.round_label = lv_label_create(left);
+    lv_label_set_text(g_ui_mgr.handles.l2_tomato_timer.round_label, "1/4");
+    lv_obj_add_style(g_ui_mgr.handles.l2_tomato_timer.round_label, 
+                     &g_ui_mgr.handles.style_small, 0);
+    lv_obj_set_style_text_color(g_ui_mgr.handles.l2_tomato_timer.round_label, 
+                                lv_color_white(), 0);
+    lv_obj_align(g_ui_mgr.handles.l2_tomato_timer.round_label, LV_ALIGN_BOTTOM_MID, 0, -SCALE_DPX(10));
+    
+    // ========== 中屏: 倒计时和进度条 ==========
+    lv_obj_t *middle = g_ui_mgr.handles.middle_panel;
+    
+    // 倒计时显示
+    g_ui_mgr.handles.l2_tomato_timer.timer_label = lv_label_create(middle);
+    lv_label_set_text(g_ui_mgr.handles.l2_tomato_timer.timer_label, "25:00");
+    lv_obj_add_style(g_ui_mgr.handles.l2_tomato_timer.timer_label, 
+                     &g_ui_mgr.handles.style_xxlarge, 0);
+    lv_obj_set_style_text_color(g_ui_mgr.handles.l2_tomato_timer.timer_label, 
+                                lv_color_white(), 0);
+    lv_obj_align(g_ui_mgr.handles.l2_tomato_timer.timer_label, LV_ALIGN_CENTER, 0, -SCALE_DPX(10));
+    
+    // 进度条
+    g_ui_mgr.handles.l2_tomato_timer.progress_bar = lv_bar_create(middle);
+    lv_obj_set_size(g_ui_mgr.handles.l2_tomato_timer.progress_bar, SCALE_DPX(100), SCALE_DPX(8));
+    lv_bar_set_range(g_ui_mgr.handles.l2_tomato_timer.progress_bar, 0, 100);
+    lv_bar_set_value(g_ui_mgr.handles.l2_tomato_timer.progress_bar, 0, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(g_ui_mgr.handles.l2_tomato_timer.progress_bar, 
+                              lv_color_make(255, 99, 71), LV_PART_INDICATOR);
+    lv_obj_align(g_ui_mgr.handles.l2_tomato_timer.progress_bar, LV_ALIGN_BOTTOM_MID, 0, -SCALE_DPX(15));
+    
+    // ========== 右屏: 统计信息 ==========
+    lv_obj_t *right = g_ui_mgr.handles.right_panel;
+    
+    // 统计标题
+    lv_obj_t *stats_title = lv_label_create(right);
+    lv_label_set_text(stats_title, "今日");
+    lv_obj_add_style(stats_title, &g_ui_mgr.handles.style_medium, 0);
+    lv_obj_set_style_text_color(stats_title, lv_color_white(), 0);
+    lv_obj_align(stats_title, LV_ALIGN_TOP_MID, 0, SCALE_DPX(10));
+    
+    // 统计数据
+    g_ui_mgr.handles.l2_tomato_timer.stats_label = lv_label_create(right);
+    lv_label_set_text(g_ui_mgr.handles.l2_tomato_timer.stats_label, "0");
+    lv_obj_add_style(g_ui_mgr.handles.l2_tomato_timer.stats_label, 
+                     &g_ui_mgr.handles.style_xlarge, 0);
+    lv_obj_set_style_text_color(g_ui_mgr.handles.l2_tomato_timer.stats_label, 
+                                lv_color_white(), 0);
+    lv_obj_align(g_ui_mgr.handles.l2_tomato_timer.stats_label, LV_ALIGN_CENTER, 0, 0);
+    
+    // 连续数显示
+    lv_obj_t *continuous_label = lv_label_create(right);
+    lv_label_set_text(continuous_label, "连续:0");
+    lv_obj_add_style(continuous_label, &g_ui_mgr.handles.style_small, 0);
+    lv_obj_set_style_text_color(continuous_label, lv_color_white(), 0);
+    lv_obj_align(continuous_label, LV_ALIGN_BOTTOM_MID, 0, -SCALE_DPX(10));
     
     g_ui_mgr.current_level = SCREEN_LEVEL_2;
+    
+    // 激活L2按键上下文
+    screen_context_activate_for_level2(SCREEN_L2_TOMATO_GROUP);
+    
+    // 初始更新显示
+    screen_ui_update_tomato_display();
     
     lv_obj_invalidate(lv_scr_act());
     return 0;
 }
 
-int screen_ui_build_l2_gallery(void)
+/**
+ * @brief 构建L2秒表计时器界面
+ */
+int screen_ui_build_l2_stopwatch(void)
 {
     if (!g_ui_mgr.initialized) {
         return -RT_ERROR;
     }
 
-    // 预留全屏图片实现
-    
     safe_cleanup_ui_objects();
     
-    // 临时显示"开发中"界面
-    lv_obj_t *temp_label = lv_label_create(g_ui_mgr.handles.middle_panel);
-    lv_label_set_text(temp_label, "全屏图片\n开发中...");
-    lv_obj_add_style(temp_label, &g_ui_mgr.handles.style_xlarge, 0);
-    lv_obj_set_style_text_color(temp_label, lv_color_white(), 0);
-    lv_obj_align(temp_label, LV_ALIGN_CENTER, 0, 0);
+    // 初始化秒表数据
+    screen_context_init_stopwatch_data();
+    
+    // ========== 左屏: 状态和提示 ==========
+    lv_obj_t *left = g_ui_mgr.handles.left_panel;
+    
+    // 标题
+    lv_obj_t *title = lv_label_create(left);
+    lv_label_set_text(title, "秒表");
+    lv_obj_add_style(title, &g_ui_mgr.handles.style_large, 0);
+    lv_obj_set_style_text_color(title, lv_color_make(100, 200, 255), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 5);
+    
+    // 状态提示 - 放在原来时间的位置(居中偏上)
+    g_ui_mgr.handles.l2_stopwatch_timer.state_label = lv_label_create(left);
+    lv_label_set_text(g_ui_mgr.handles.l2_stopwatch_timer.state_label, "待机");
+    lv_obj_add_style(g_ui_mgr.handles.l2_stopwatch_timer.state_label, 
+                     &g_ui_mgr.handles.style_xlarge, 0);
+    lv_obj_set_style_text_color(g_ui_mgr.handles.l2_stopwatch_timer.state_label, 
+                                lv_color_white(), 0);
+    lv_obj_align(g_ui_mgr.handles.l2_stopwatch_timer.state_label, LV_ALIGN_CENTER, 0, 0);
+    
+    // 操作提示 - 放在原来状态的位置(底部)
+    lv_obj_t *start_hint = lv_label_create(left);
+    lv_label_set_text(start_hint, "开始/暂停");
+    lv_obj_add_style(start_hint, &g_ui_mgr.handles.style_medium, 0);
+    lv_obj_set_style_text_color(start_hint, lv_color_make(180, 180, 180), 0);
+    lv_obj_align(start_hint, LV_ALIGN_BOTTOM_MID, 0, -5);
+    
+    // ========== 中屏: 计时显示 ==========
+    lv_obj_t *middle = g_ui_mgr.handles.middle_panel;
+    
+    // 计时显示 - 大字号，居中
+    g_ui_mgr.handles.l2_stopwatch_timer.time_label = lv_label_create(middle);
+    lv_label_set_text(g_ui_mgr.handles.l2_stopwatch_timer.time_label, "00:00.0");
+    lv_obj_add_style(g_ui_mgr.handles.l2_stopwatch_timer.time_label, 
+                     &g_ui_mgr.handles.style_xxlarge, 0);
+    lv_obj_set_style_text_color(g_ui_mgr.handles.l2_stopwatch_timer.time_label, 
+                                lv_color_white(), 0);
+    lv_obj_align(g_ui_mgr.handles.l2_stopwatch_timer.time_label, LV_ALIGN_CENTER, 0, 0);
+    
+    // 重置提示 - 底部
+    lv_obj_t *reset_hint = lv_label_create(middle);
+    lv_label_set_text(reset_hint, "重置");
+    lv_obj_add_style(reset_hint, &g_ui_mgr.handles.style_medium, 0);
+    lv_obj_set_style_text_color(reset_hint, lv_color_make(180, 180, 180), 0);
+    lv_obj_align(reset_hint, LV_ALIGN_BOTTOM_MID, 0, -5);
+    
+    // ========== 右屏: 计时器图标 ==========
+    lv_obj_t *right = g_ui_mgr.handles.right_panel;
+    
+    lv_obj_t *icon = create_entrance_icon(right, get_calculagraph_image());
+    if (icon) {
+        lv_obj_align(icon, LV_ALIGN_CENTER, 0, 0);
+    }
     
     g_ui_mgr.current_level = SCREEN_LEVEL_2;
     
+    // 激活L2按键上下文
+    screen_context_activate_for_level2(SCREEN_L2_STOPWATCH_GROUP);
+    // 初始更新显示
+    screen_ui_update_stopwatch_display();
+    
     lv_obj_invalidate(lv_scr_act());
+    return 0;
+}
+
+/**
+ * @brief 更新秒表显示
+ */
+int screen_ui_update_stopwatch_display(void)
+{
+    if (!g_ui_mgr.initialized) {
+        return 0;
+    }
+    
+    // 检查是否在秒表L2页面
+    if (!g_ui_mgr.handles.l2_stopwatch_timer.time_label || 
+        !lv_obj_is_valid(g_ui_mgr.handles.l2_stopwatch_timer.time_label)) {
+        return 0;
+    }
+    
+    // ⭐ 获取秒表数据（内部已实时计算）
+    stopwatch_data_t stopwatch_data;
+    if (screen_context_get_stopwatch_data(&stopwatch_data) != 0) {
+        return -RT_ERROR;
+    }
+    
+    // 更新时间显示 (MM:SS.d)
+    uint32_t total_deciseconds = stopwatch_data.elapsed_deciseconds;
+    uint32_t minutes = total_deciseconds / 600;
+    uint32_t seconds = (total_deciseconds % 600) / 10;
+    uint32_t deciseconds = total_deciseconds % 10;
+    
+    char time_str[16];
+    rt_snprintf(time_str, sizeof(time_str), "%02u:%02u.%u", 
+               minutes, seconds, deciseconds);
+    lv_label_set_text(g_ui_mgr.handles.l2_stopwatch_timer.time_label, time_str);
+    
+    // 更新状态显示
+    if (g_ui_mgr.handles.l2_stopwatch_timer.state_label && 
+        lv_obj_is_valid(g_ui_mgr.handles.l2_stopwatch_timer.state_label)) {
+        const char *state_text;
+        
+        if (stopwatch_data.is_running) {
+            state_text = "计时中";
+        } else if (stopwatch_data.elapsed_deciseconds > 0) {
+            state_text = "已暂停";
+        } else {
+            state_text = "待机";
+        }
+        
+        lv_label_set_text(g_ui_mgr.handles.l2_stopwatch_timer.state_label, state_text);
+    }
+    
     return 0;
 }
 
@@ -2347,6 +2713,322 @@ int screen_ui_reset_muyu_counter(void)
     screen_context_handle_muyu_reset();
 
     screen_ui_update_muyu_display();
+    
+    return 0;
+}
+
+int screen_ui_update_tomato_display(void)
+{
+    if (!g_ui_mgr.initialized) {
+        return 0;
+    }
+    
+    // 检查是否在番茄钟L2页面
+    if (!g_ui_mgr.handles.l2_tomato_timer.timer_label || 
+        !lv_obj_is_valid(g_ui_mgr.handles.l2_tomato_timer.timer_label)) {
+        return 0;
+    }
+    
+    // ✅ 先在线程安全的上下文中处理倒计时逻辑
+    extern void tomato_process_countdown(void);  // 声明外部函数
+    tomato_process_countdown();
+    
+    // 获取番茄钟数据
+    tomato_data_t tomato_data;
+    if (screen_context_get_tomato_data(&tomato_data) != 0) {
+        return -RT_ERROR;
+    }
+    
+    // 更新模式显示
+    if (g_ui_mgr.handles.l2_tomato_timer.mode_label && 
+        lv_obj_is_valid(g_ui_mgr.handles.l2_tomato_timer.mode_label)) {
+        const char *mode_text;
+        lv_color_t mode_color;
+        
+        switch (tomato_data.current_mode) {
+            case TOMATO_MODE_FOCUS:
+                mode_text = "专注";
+                mode_color = lv_color_make(255, 99, 71);  // 番茄红
+                break;
+            case TOMATO_MODE_SHORT_BREAK:
+                mode_text = "短休息";
+                mode_color = lv_color_make(0, 255, 0);    // 绿色
+                break;
+            case TOMATO_MODE_LONG_BREAK:
+                mode_text = "长休息";
+                mode_color = lv_color_make(0, 191, 255);  // 蓝色
+                break;
+            default:
+                mode_text = "未知";
+                mode_color = lv_color_white();
+                break;
+        }
+        
+        lv_label_set_text(g_ui_mgr.handles.l2_tomato_timer.mode_label, mode_text);
+        lv_obj_set_style_text_color(g_ui_mgr.handles.l2_tomato_timer.mode_label, mode_color, 0);
+    }
+    
+    // 更新倒计时显示
+    if (g_ui_mgr.handles.l2_tomato_timer.timer_label && 
+        lv_obj_is_valid(g_ui_mgr.handles.l2_tomato_timer.timer_label)) {
+        uint16_t minutes = tomato_data.remaining_seconds / 60;
+        uint16_t seconds = tomato_data.remaining_seconds % 60;
+        
+        char timer_str[16];
+        rt_snprintf(timer_str, sizeof(timer_str), "%02d:%02d", minutes, seconds);
+        lv_label_set_text(g_ui_mgr.handles.l2_tomato_timer.timer_label, timer_str);
+    }
+    
+    // 更新进度条
+    if (g_ui_mgr.handles.l2_tomato_timer.progress_bar && 
+        lv_obj_is_valid(g_ui_mgr.handles.l2_tomato_timer.progress_bar)) {
+        lv_bar_set_value(g_ui_mgr.handles.l2_tomato_timer.progress_bar, 
+                        tomato_data.progress_percent, LV_ANIM_OFF);
+    }
+    
+    // 更新状态显示
+    if (g_ui_mgr.handles.l2_tomato_timer.state_label && 
+        lv_obj_is_valid(g_ui_mgr.handles.l2_tomato_timer.state_label)) {
+        const char *state_text;
+        
+        switch (tomato_data.current_state) {
+            case TOMATO_STATE_IDLE:
+                state_text = "待机";
+                break;
+            case TOMATO_STATE_RUNNING:
+                state_text = "进行中";
+                break;
+            case TOMATO_STATE_PAUSED:
+                state_text = "已暂停";
+                break;
+            case TOMATO_STATE_COMPLETED:
+                state_text = "已完成!";
+                break;
+            default:
+                state_text = "未知";
+                break;
+        }
+        
+        lv_label_set_text(g_ui_mgr.handles.l2_tomato_timer.state_label, state_text);
+    }
+    
+    // 更新统计显示
+    if (g_ui_mgr.handles.l2_tomato_timer.stats_label && 
+        lv_obj_is_valid(g_ui_mgr.handles.l2_tomato_timer.stats_label)) {
+        char stats_str[16];
+        rt_snprintf(stats_str, sizeof(stats_str), "%d", tomato_data.today_completed);
+        lv_label_set_text(g_ui_mgr.handles.l2_tomato_timer.stats_label, stats_str);
+    }
+    
+    // 更新轮次显示
+    if (g_ui_mgr.handles.l2_tomato_timer.round_label && 
+        lv_obj_is_valid(g_ui_mgr.handles.l2_tomato_timer.round_label)) {
+        char round_str[16];
+        if (tomato_data.current_mode == TOMATO_MODE_FOCUS) {
+            rt_snprintf(round_str, sizeof(round_str), "%d/%d", 
+                       tomato_data.current_round + 1, 
+                       tomato_data.long_break_interval);
+        } else {
+            rt_snprintf(round_str, sizeof(round_str), "休息中");
+        }
+        lv_label_set_text(g_ui_mgr.handles.l2_tomato_timer.round_label, round_str);
+    }
+    
+    return 0;
+}
+
+/* 番茄钟后台显示切换定时器回调 */
+static void tomato_background_switch_callback(void *parameter)
+{
+    (void)parameter;
+    
+    // 切换显示模式
+    g_tomato_background_display.show_tomato = !g_tomato_background_display.show_tomato;
+    g_tomato_background_display.last_switch_tick = rt_tick_get();
+    
+    // 触发时间显示更新
+    screen_core_post_update_time();
+}
+
+/**
+ * @brief 检查是否正在显示番茄钟模式
+ */
+static bool is_showing_tomato_mode(void)
+{
+    return g_tomato_background_display.enabled && 
+           g_tomato_background_display.show_tomato;
+}
+
+/**
+ * @brief 正常时间显示模式
+ */
+static int screen_ui_update_time_display_normal_mode(void)
+{
+    time_t now = time(NULL);
+    if (now == (time_t)-1) return -1;
+    
+    struct tm *tm_info = localtime(&now);
+    if (!tm_info) return -1;
+
+    /* 更新年份 */
+    if (g_ui_mgr.handles.group1_time.year_label && 
+        lv_obj_is_valid(g_ui_mgr.handles.group1_time.year_label)) {
+        char year_str[16];
+        rt_snprintf(year_str, sizeof(year_str), "%d年", tm_info->tm_year + 1900);
+        lv_label_set_text(g_ui_mgr.handles.group1_time.year_label, year_str);
+    }
+
+    /* 更新时间 */
+    if (g_ui_mgr.handles.group1_time.time_label && 
+        lv_obj_is_valid(g_ui_mgr.handles.group1_time.time_label)) {
+        char time_str[16];
+        rt_snprintf(time_str, sizeof(time_str), "%02d:%02d", 
+                   tm_info->tm_hour, tm_info->tm_min);
+        lv_label_set_text(g_ui_mgr.handles.group1_time.time_label, time_str);
+    }
+
+    /* 更新中文日期 */
+    if (g_ui_mgr.handles.group1_time.date_label && 
+        lv_obj_is_valid(g_ui_mgr.handles.group1_time.date_label)) {
+        char date_str[32];
+        rt_snprintf(date_str, sizeof(date_str), "%s%d日", 
+                   chinese_months[tm_info->tm_mon], tm_info->tm_mday);
+        lv_label_set_text(g_ui_mgr.handles.group1_time.date_label, date_str);
+    }
+
+    /* 更新中文星期 */
+    if (g_ui_mgr.handles.group1_time.weekday_label && 
+        lv_obj_is_valid(g_ui_mgr.handles.group1_time.weekday_label)) {
+        lv_label_set_text(g_ui_mgr.handles.group1_time.weekday_label, 
+                         chinese_weekdays[tm_info->tm_wday]);
+    }
+
+    return 0;
+}
+
+/**
+ * @brief 番茄钟显示模式
+ */
+static int screen_ui_update_time_display_tomato_mode(void)
+{
+    extern void tomato_process_countdown(void);
+    tomato_process_countdown();
+    // 获取番茄钟数据
+    tomato_data_t tomato_data;
+    if (screen_context_get_tomato_data(&tomato_data) != 0) {
+        return screen_ui_update_time_display_normal_mode();
+    }
+    
+    /* 第一行: "番茄钟" */
+    if (g_ui_mgr.handles.group1_time.year_label && 
+        lv_obj_is_valid(g_ui_mgr.handles.group1_time.year_label)) {
+        lv_label_set_text(g_ui_mgr.handles.group1_time.year_label, "番茄钟");
+    }
+    
+    /* 第二行: 模式 */
+    if (g_ui_mgr.handles.group1_time.date_label && 
+        lv_obj_is_valid(g_ui_mgr.handles.group1_time.date_label)) {
+        const char *mode_text;
+        switch (tomato_data.current_mode) {
+            case TOMATO_MODE_FOCUS:
+                mode_text = "专注中";
+                break;
+            case TOMATO_MODE_SHORT_BREAK:
+                mode_text = "短休息";
+                break;
+            case TOMATO_MODE_LONG_BREAK:
+                mode_text = "长休息";
+                break;
+            default:
+                mode_text = "运行中";
+                break;
+        }
+        lv_label_set_text(g_ui_mgr.handles.group1_time.date_label, mode_text);
+    }
+    
+    /* 第三行: 轮次 */
+    if (g_ui_mgr.handles.group1_time.weekday_label && 
+        lv_obj_is_valid(g_ui_mgr.handles.group1_time.weekday_label)) {
+        char round_str[16];
+        if (tomato_data.current_mode == TOMATO_MODE_FOCUS) {
+            rt_snprintf(round_str, sizeof(round_str), "%d/%d轮", 
+                       tomato_data.current_round + 1, 
+                       tomato_data.long_break_interval);
+        } else {
+            rt_snprintf(round_str, sizeof(round_str), "休息中");
+        }
+        lv_label_set_text(g_ui_mgr.handles.group1_time.weekday_label, round_str);
+    }
+    
+    /* 第四行(大字): 剩余时间 */
+    if (g_ui_mgr.handles.group1_time.time_label && 
+        lv_obj_is_valid(g_ui_mgr.handles.group1_time.time_label)) {
+        uint16_t minutes = tomato_data.remaining_seconds / 60;
+        uint16_t seconds = tomato_data.remaining_seconds % 60;
+        
+        char time_str[16];
+        rt_snprintf(time_str, sizeof(time_str), "%02d:%02d", minutes, seconds);
+        lv_label_set_text(g_ui_mgr.handles.group1_time.time_label, time_str);
+    }
+    
+    return 0;
+}
+
+/**
+ * @brief 启动番茄钟后台显示轮换
+ */
+int screen_ui_start_tomato_background_display(void)
+{
+    if (!g_ui_mgr.initialized) {
+        return -RT_ERROR;
+    }
+    
+    // 如果已经启动,直接返回
+    if (g_tomato_background_display.enabled) {
+        return 0;
+    }
+    
+    // 创建切换定时器(5秒)
+    if (!g_tomato_background_display.switch_timer) {
+        g_tomato_background_display.switch_timer = rt_timer_create(
+            "tomato_bg",
+            tomato_background_switch_callback,
+            RT_NULL,
+            rt_tick_from_millisecond(5000),
+            RT_TIMER_FLAG_PERIODIC
+        );
+    }
+    
+    if (g_tomato_background_display.switch_timer) {
+        g_tomato_background_display.enabled = true;
+        g_tomato_background_display.show_tomato = false;  // 从正常时间开始
+        g_tomato_background_display.last_switch_tick = rt_tick_get();
+        
+        rt_timer_start(g_tomato_background_display.switch_timer);
+        return 0;
+    }
+    
+    return -RT_ERROR;
+}
+
+/**
+ * @brief 停止番茄钟后台显示轮换
+ */
+int screen_ui_stop_tomato_background_display(void)
+{
+    if (!g_tomato_background_display.enabled) {
+        return 0;
+    }
+    
+    if (g_tomato_background_display.switch_timer) {
+        rt_timer_stop(g_tomato_background_display.switch_timer);
+    }
+    
+    g_tomato_background_display.enabled = false;
+    g_tomato_background_display.show_tomato = false;
+    
+    // 恢复正常时间显示
+    screen_core_post_update_time();
     
     return 0;
 }

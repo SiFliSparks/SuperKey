@@ -206,14 +206,10 @@ static void LCD_Drv_Init(LCDC_HandleTypeDef *hlcdc)
 {
     uint8_t   parameter[32];
     
-    /* 初始化RST引脚  */
-    HAL_PIN_Set(PAD_PA00, GPIO_A0, PIN_NOPULL, 1);
-    rt_pin_mode(LCD_RST_PIN, PIN_MODE_OUTPUT);
-    
     /* Reset LCD - 使用专用RST引脚 */
-    rt_pin_write(LCD_RST_PIN, PIN_LOW);
+    BSP_LCD_Reset(0); // Reset LCD
     HAL_Delay_us(20);
-    rt_pin_write(LCD_RST_PIN, PIN_HIGH);
+    BSP_LCD_Reset(1);
     
     LCD_WriteReg_More(hlcdc, 0x11, parameter, 1);
     LCD_DRIVER_DELAY_MS(120);
@@ -330,12 +326,6 @@ static void LCD_Drv_Init(LCDC_HandleTypeDef *hlcdc)
 
 static void LCD_Init(LCDC_HandleTypeDef *hlcdc)
 {
-    // 初始化CS引脚 - 只初始化3个引脚
-    for (int i = 0; i < LCD_SCREEN_NUM; i++) {
-        HAL_PIN_Set(lcd_cs_pad_gpio[i].pad, lcd_cs_pad_gpio[i].gpio, PIN_NOPULL, 1);
-        rt_pin_mode(lcd_cs_pins[i], PIN_MODE_OUTPUT);
-        rt_pin_write(lcd_cs_pins[i], PIN_HIGH);
-    }
 
     // 设置引脚的驱动能力 PAD_PA04为SCL和PAD_PA05为SDA
     HAL_PIN_Set_DS0(PAD_PA04, 1, 1);

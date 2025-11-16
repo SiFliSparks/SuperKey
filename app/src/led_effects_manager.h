@@ -55,23 +55,25 @@ typedef int (*led_custom_effect_func_t)(uint32_t tick, const led_effect_config_t
 
 /* LED效果管理器初始化和去初始化 */
 int led_effects_manager_init(void);
+int led_effects_manager_start(void);
+bool led_effects_is_started(void);
 int led_effects_manager_deinit(void);
 
 /* 全局亮度控制 */
 int led_effects_set_global_brightness(uint8_t brightness);
 uint8_t led_effects_get_global_brightness(void);
 
-/* 单个LED控制 - 线程安全版本 */
+/* 单个LED控制 */
 int led_effects_set_led(uint8_t led_index, uint32_t color);
 int led_effects_get_led(uint8_t led_index, uint32_t *color);
 int led_effects_turn_off_led(uint8_t led_index);
 int led_effects_turn_on_led(uint8_t led_index, uint32_t color);
 
-/* 所有LED控制 - 线程安全版本 */
+/* 所有LED控制 */
 int led_effects_set_all_leds(uint32_t color);
 int led_effects_turn_off_all_leds(void);
 
-/* LED效果控制 - 线程安全版本 */
+/* LED效果控制 */
 led_effect_handle_t led_effects_start_effect(const led_effect_config_t *config);
 int led_effects_stop_effect(led_effect_handle_t handle);
 int led_effects_pause_effect(led_effect_handle_t handle);

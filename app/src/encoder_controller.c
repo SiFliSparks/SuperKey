@@ -122,7 +122,7 @@ int encoder_controller_init(void)
     }
     
     g_encoder.mode = ENCODER_MODE_IDLE;
-    g_encoder.sensitivity = 1;  // 不再使用 sensitivity，改用阈值
+    g_encoder.sensitivity = 1;
     g_encoder.last_count = 0;
     g_encoder.total_count = 0;
     g_encoder.polling_enabled = false;

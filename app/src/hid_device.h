@@ -35,7 +35,6 @@ void hid_consumer_click(uint8_t bits);
 bool hid_device_ready(void);
 void hid_reset_semaphore(void);
 bool hid_is_busy(void);
-int hid_get_semaphore_count(void);
 
 #ifdef __cplusplus
 }

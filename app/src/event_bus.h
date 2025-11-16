@@ -1,5 +1,3 @@
-// event_bus.h - 更新版本
-
 #ifndef EVENT_BUS_H
 #define EVENT_BUS_H
 
@@ -17,7 +15,8 @@ typedef enum {
     EVENT_DATA_STOCK_UPDATED,
     EVENT_DATA_SYSTEM_UPDATED,
     EVENT_DATA_SENSOR_UPDATED,
-    
+    EVENT_DATA_FORECAST_UPDATED,
+
     EVENT_SCREEN_SWITCH_REQUEST = 0x2000,
     EVENT_SCREEN_REFRESH_REQUEST,
     EVENT_SCREEN_GROUP_CHANGED,
@@ -72,6 +71,10 @@ typedef struct {
 } event_data_system_t;
 
 typedef struct {
+    weather_forecast_data_t forecast;
+} event_data_forecast_t;
+
+typedef struct {
     screen_group_t target_group;
     screen_group_t current_group;
     bool force_switch;
@@ -106,6 +109,7 @@ typedef struct {
         event_data_weather_t weather;
         event_data_stock_t stock;
         event_data_system_t system;
+        event_data_forecast_t forecast;
         event_data_screen_switch_t screen_switch;
         event_data_encoder_t encoder;
         event_data_error_t error;
@@ -149,7 +153,6 @@ int event_bus_get_stats(uint32_t *published_count, uint32_t *processed_count,
                        uint32_t *dropped_count, uint32_t *queue_size);
 int event_bus_cleanup(void);
 
-//  增强功能
 int event_bus_enable_health_monitor(bool enable);
 uint32_t event_bus_get_error_count(void);
 int event_bus_reset_stats(void);

@@ -128,8 +128,16 @@ static void usbd_event_handler(uint8_t busid, uint8_t event)
     case USBD_EVENT_RESET:
     case USBD_EVENT_DISCONNECTED:
         g_configured = false;
-        g_hid_state = HID_STATE_IDLE;
-        if (g_hid_complete_sem) rt_sem_release(g_hid_complete_sem);
+        // 只在BUSY状态才释放信号量
+        if (g_hid_state == HID_STATE_BUSY) {
+            g_hid_state = HID_STATE_IDLE;
+            if (g_hid_complete_sem) {
+                rt_sem_release(g_hid_complete_sem);
+            }
+        } else {
+            // 如果不是BUSY状态，只重置状态
+            g_hid_state = HID_STATE_IDLE;
+        }
         break;
     case USBD_EVENT_CONFIGURED:
         g_configured = true;
@@ -179,21 +187,9 @@ static int hid_send(const uint8_t *data, uint32_t len)
         return ret;
     }
 
-    rt_err_t sem_result = rt_sem_take(g_hid_complete_sem, rt_tick_from_millisecond(500));
+    rt_err_t sem_result = rt_sem_take(g_hid_complete_sem, rt_tick_from_millisecond(1000));
     if (sem_result != RT_EOK) {
-        g_hid_state = HID_STATE_IDLE;
-        
-        int cleared = 0;
-        while (rt_sem_take(g_hid_complete_sem, 0) == RT_EOK) {
-            cleared++;
-            if (cleared > 10) {
-                break;
-            }
-        }
-        
-        if (cleared > 0) {
-        }
-        
+
         return -1;
     }
     
@@ -205,44 +201,12 @@ void hid_reset_semaphore(void)
     if (!g_hid_complete_sem) {
         return;
     }
-    
     g_hid_state = HID_STATE_IDLE;
-    
-    int cleared = 0;
-    while (rt_sem_take(g_hid_complete_sem, 0) == RT_EOK) {
-        cleared++;
-        if (cleared > 20) {
-            break;
-        }
-    }
-    
-    if (cleared > 0) {
-    } else {
-    }
 }
 
 bool hid_is_busy(void)
 {
     return (g_hid_state == HID_STATE_BUSY);
-}
-
-int hid_get_semaphore_count(void)
-{
-    if (!g_hid_complete_sem) {
-        return -1;
-    }
-    
-    int count = 0;
-    while (rt_sem_take(g_hid_complete_sem, 0) == RT_EOK) {
-        count++;
-        if (count > 10) break;
-    }
-    
-    for (int i = 0; i < count; i++) {
-        rt_sem_release(g_hid_complete_sem);
-    }
-    
-    return count;
 }
 
 static int kbd_send_report(uint8_t modifier, uint8_t keycode)

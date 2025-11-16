@@ -26,8 +26,8 @@ typedef enum {
     /*  L2木鱼相关上下文ID */
     KEY_CTX_L2_MUYU,          /* L2：赛博木鱼界面 */
     KEY_CTX_L2_TOMATO,        /* L2：番茄钟界面（预留） */
-    KEY_CTX_L2_GALLERY,       /* L2：全屏图片界面（预留） */
-    
+    KEY_CTX_L2_STOPWATCH,        /* L2：秒表界面（预留） */
+    KEY_CTX_L2_WEATHER,      /* L2：天气扩展界面 */
     KEY_CTX_MAX
 } key_context_id_t;
 

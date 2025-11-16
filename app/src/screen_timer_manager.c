@@ -14,7 +14,8 @@ static const screen_timer_config_t default_configs[SCREEN_TIMER_MAX] = {
     {SCREEN_TIMER_SYSTEM,  2000,  true,  true,  "system"},
     {SCREEN_TIMER_SENSOR,  5000,  true,  true,  "sensor"},
     {SCREEN_TIMER_CLEANUP, 60000, true,  true,  "cleanup"},
-    {SCREEN_TIMER_MUYU,    200,   true,  true,  "muyu"}
+    {SCREEN_TIMER_MUYU,    200,   true,  true,  "muyu"},
+    {SCREEN_TIMER_STOPWATCH, 100,  true,  true,  "stopwatch"}
 };
 
 static void safe_timer_callback(void *parameter)
@@ -54,7 +55,10 @@ static void safe_timer_callback(void *parameter)
             break;
             
         case SCREEN_TIMER_MUYU:
-            screen_core_post_update_time(); //木鱼UI更新 - 借用时间更新消息
+            screen_core_post_update_time();
+            break;
+        case SCREEN_TIMER_STOPWATCH:
+            screen_core_post_update_time(); // 秒表UI更新
             break;
             
         default:

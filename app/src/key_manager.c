@@ -1,17 +1,17 @@
-// key_manager.c - 重新设计版本
+
 
 #include "key_manager.h"
 #include "buttons_board.h"
 #include "event_bus.h"
 #include <string.h>
-#include "led_compat.h"
+#include "led_effects_manager.h"
 #include "led_effects_manager.h"
 #define MAX_CONTEXT_STACK_DEPTH 4
 #define KEY_THREAD_STACK_SIZE   4096
 #define KEY_THREAD_PRIORITY     10
 #define KEY_MSG_QUEUE_SIZE      16
 
-/* 按键消息类型 */
+
 typedef enum {
     KEY_MSG_BUTTON_EVENT,       // 按键事件
     KEY_MSG_ACTIVATE_CONTEXT,   // 激活上下文
@@ -20,7 +20,7 @@ typedef enum {
     KEY_MSG_SHUTDOWN            // 关闭
 } key_msg_type_t;
 
-/* 按键消息结构体 */
+
 typedef struct {
     key_msg_type_t type;
     union {
@@ -50,7 +50,7 @@ static struct {
     int stack_top;
     bool led_feedback_enabled;
     
-    // 线程和通信
+
     rt_thread_t key_thread;
     rt_mq_t key_msg_queue;
     rt_sem_t shutdown_sem;
@@ -59,14 +59,14 @@ static struct {
     bool running;
 } g_key_mgr = {0};
 
-/* 前向声明 */
+
 static void key_thread_entry(void *parameter);
 static void key_process_message(const key_message_t *msg);
 static int key_send_message(const key_message_t *msg);
 static void key_handle_led_feedback(int key_idx, button_action_t action);
 static void key_isr_callback(int32_t pin, button_action_t action);
 
-/* 中断服务程序回调 - 只发送消息到队列 */
+
 static void key_isr_callback(int32_t pin, button_action_t action)
 {
     int key_idx = buttons_board_pin_to_idx(pin);
@@ -74,7 +74,7 @@ static void key_isr_callback(int32_t pin, button_action_t action)
         return;
     }
 
-    // 在中断上下文中只发送消息，不执行复杂操作
+
     key_message_t msg = {
         .type = KEY_MSG_BUTTON_EVENT,
         .data.button_event = {
@@ -83,11 +83,11 @@ static void key_isr_callback(int32_t pin, button_action_t action)
         }
     };
 
-    // 使用非阻塞发送，如果队列满了就丢弃
+
     rt_mq_send(g_key_mgr.key_msg_queue, &msg, sizeof(msg));
 }
 
-/* 按键处理线程 */
+
 static void key_thread_entry(void *parameter)
 {
     (void)parameter;
@@ -108,7 +108,7 @@ static void key_thread_entry(void *parameter)
     rt_sem_release(g_key_mgr.shutdown_sem);
 }
 
-/* 处理按键消息 - 在线程上下文中执行 */
+
 static void key_process_message(const key_message_t *msg)
 {
     switch (msg->type) {
@@ -117,7 +117,7 @@ static void key_process_message(const key_message_t *msg)
                 int key_idx = msg->data.button_event.key_idx;
                 button_action_t action = msg->data.button_event.action;
                 
-                // 处理按键事件
+
                 if (g_key_mgr.current_ctx != KEY_CTX_NONE && 
                     g_key_mgr.current_ctx < KEY_CTX_MAX) {
                     
@@ -132,13 +132,13 @@ static void key_process_message(const key_message_t *msg)
             {
                 key_context_id_t ctx_id = msg->data.context_op.ctx_id;
                 
-                // 停用当前上下文
+
                 if (g_key_mgr.current_ctx != KEY_CTX_NONE && 
                     g_key_mgr.current_ctx < KEY_CTX_MAX) {
                     g_key_mgr.contexts[g_key_mgr.current_ctx].active = false;
                 }
                 
-                // 激活新上下文
+
                 if (ctx_id != KEY_CTX_NONE) {
                     if (g_key_mgr.contexts[ctx_id].registered) {
                         g_key_mgr.contexts[ctx_id].active = true;
@@ -186,7 +186,7 @@ static int key_send_message(const key_message_t *msg)
     return (result == RT_EOK) ? 0 : -RT_ERROR;
 }
 
-/* 按键管理器初始化 */
+
 int key_manager_init(void)
 {
     if (g_key_mgr.initialized) {
@@ -199,7 +199,7 @@ int key_manager_init(void)
     g_key_mgr.led_feedback_enabled = true;
     g_key_mgr.running = true;
 
-    // 1. 创建消息队列
+
     g_key_mgr.key_msg_queue = rt_mq_create("key_mq", 
                                           sizeof(key_message_t), 
                                           KEY_MSG_QUEUE_SIZE, 
@@ -208,14 +208,14 @@ int key_manager_init(void)
         return -RT_ENOMEM;
     }
 
-    // 2. 创建关闭信号量
+
     g_key_mgr.shutdown_sem = rt_sem_create("key_shutdown", 0, RT_IPC_FLAG_PRIO);
     if (!g_key_mgr.shutdown_sem) {
         rt_mq_delete(g_key_mgr.key_msg_queue);
         return -RT_ENOMEM;
     }
 
-    // 3. 创建按键处理线程
+
     g_key_mgr.key_thread = rt_thread_create("key_mgr",
                                            key_thread_entry,
                                            RT_NULL,
@@ -228,38 +228,38 @@ int key_manager_init(void)
         return -RT_ENOMEM;
     }
 
-    // 4. 初始化按键板硬件
+
     if (buttons_board_init(key_isr_callback) != RT_EOK) {
         rt_sem_delete(g_key_mgr.shutdown_sem);
         rt_mq_delete(g_key_mgr.key_msg_queue);
         return -RT_ERROR;
     }
 
-    // 5. 启动线程
+
     rt_thread_startup(g_key_mgr.key_thread);
 
     g_key_mgr.initialized = true;
     return 0;
 }
 
-/* 按键管理器去初始化 */
+
 int key_manager_deinit(void)
 {
     if (!g_key_mgr.initialized) {
         return 0;
     }
 
-    // 1. 发送关闭消息
+
     key_message_t shutdown_msg = {.type = KEY_MSG_SHUTDOWN};
     key_send_message(&shutdown_msg);
 
-    // 2. 等待线程结束
+
     rt_sem_take(g_key_mgr.shutdown_sem, 5000);
 
-    // 3. 清理硬件
+
     buttons_board_deinit();
 
-    // 4. 清理资源
+
     if (g_key_mgr.shutdown_sem) {
         rt_sem_delete(g_key_mgr.shutdown_sem);
         g_key_mgr.shutdown_sem = RT_NULL;
@@ -274,7 +274,7 @@ int key_manager_deinit(void)
     return 0;
 }
 
-/* 注册上下文 - 直接操作，不需要消息队列 */
+
 int key_manager_register_context(const key_context_config_t *config)
 {
     if (!config || config->id >= KEY_CTX_MAX || config->id == KEY_CTX_NONE) {
@@ -295,7 +295,7 @@ int key_manager_register_context(const key_context_config_t *config)
     return 0;
 }
 
-/* 注销上下文 */
+
 int key_manager_unregister_context(key_context_id_t ctx_id)
 {
     if (ctx_id >= KEY_CTX_MAX || ctx_id == KEY_CTX_NONE) {
@@ -309,7 +309,7 @@ int key_manager_unregister_context(key_context_id_t ctx_id)
     if (!g_key_mgr.contexts[ctx_id].registered) {
         return -RT_ERROR;
     }
-    // 如果当前上下文是要注销的，先停用它
+
     if (g_key_mgr.current_ctx == ctx_id) {
         key_message_t msg = {
             .type = KEY_MSG_DEACTIVATE_CONTEXT,
@@ -322,7 +322,7 @@ int key_manager_unregister_context(key_context_id_t ctx_id)
     return 0;
 }
 
-/* 激活上下文 - 通过消息队列 */
+
 int key_manager_activate_context(key_context_id_t ctx_id)
 {
     if (ctx_id >= KEY_CTX_MAX) {
@@ -341,7 +341,7 @@ int key_manager_activate_context(key_context_id_t ctx_id)
     return key_send_message(&msg);
 }
 
-/* 停用上下文 - 通过消息队列 */
+
 int key_manager_deactivate_context(key_context_id_t ctx_id)
 {
     if (ctx_id >= KEY_CTX_MAX) {
@@ -360,13 +360,13 @@ int key_manager_deactivate_context(key_context_id_t ctx_id)
     return key_send_message(&msg);
 }
 
-/* 获取当前激活的上下文 */
+
 key_context_id_t key_manager_get_active_context(void)
 {
     return g_key_mgr.current_ctx;
 }
 
-/* 启用/禁用LED反馈 */
+
 int key_manager_enable_led_feedback(bool enable)
 {
     if (!g_key_mgr.initialized) {
@@ -381,7 +381,7 @@ int key_manager_enable_led_feedback(bool enable)
     return key_send_message(&msg);
 }
 
-/* 获取上下文名称 */
+
 const char* key_manager_get_context_name(key_context_id_t ctx_id)
 {
     if (ctx_id >= KEY_CTX_MAX) {
@@ -399,13 +399,13 @@ const char* key_manager_get_context_name(key_context_id_t ctx_id)
     return "UNREGISTERED";
 }
 
-/* 检查LED反馈是否启用 */
+
 bool key_manager_is_led_feedback_enabled(void)
 {
     return g_key_mgr.led_feedback_enabled;
 }
 
-/* 上下文堆栈操作 */
+
 int key_manager_push_context(key_context_id_t ctx_id)
 {
     if (ctx_id >= KEY_CTX_MAX || !g_key_mgr.initialized) {

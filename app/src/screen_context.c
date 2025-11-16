@@ -1,5 +1,5 @@
 #include "screen_context.h"
-#include "led_compat.h"
+#include "led_effects_manager.h"
 #include "app_controller.h"
 #include <rtthread.h>
 #include "hid_device.h"  
@@ -11,6 +11,7 @@
 #include "screen_core.h" 
 
 static rt_tick_t last_muyu_tap_time = 0;
+
 #define MUYU_DEBOUNCE_MS 100  // 100ms防抖
 /* LED映射函数 - 解决硬件映射问题 */
 static int get_led_index_for_key(int key_idx)
@@ -25,8 +26,13 @@ static int get_led_index_for_key(int key_idx)
 }
 static int screen_group4_key_handler(int key_idx, button_action_t action, void *user_data);
 static int screen_l2_muyu_key_handler(int key_idx, button_action_t action, void *user_data);
+static int screen_l2_weather_key_handler(int key_idx, button_action_t action, void *user_data);
+static int screen_l2_tomato_key_handler(int key_idx, button_action_t action, void *user_data);
+static int screen_l2_stopwatch_key_handler(int key_idx, button_action_t action, void *user_data);
 /* 全局蓝色呼吸灯效果句柄 - 用于恢复背景特效 */
 static led_effect_handle_t g_background_breathing_effect = NULL;
+
+
 
 /* 简化版恢复机制 - 避免在ISR中创建复杂对象 */
 static rt_timer_t g_delayed_restore_timer = NULL;
@@ -59,7 +65,8 @@ static void check_and_restore_background(void)
         start_background_breathing_effect();
     }
 }
-//木鱼数据定义
+
+// 木鱼数据定义
 typedef struct {
     uint32_t tap_count;
     uint32_t total_taps;
@@ -69,7 +76,10 @@ typedef struct {
 static muyu_counter_t g_muyu_counter = {0};
 static rt_mutex_t g_muyu_counter_lock = NULL;
 static bool g_muyu_counter_initialized = false;
-
+// 全局番茄钟数据和互斥锁定义
+static tomato_data_t g_tomato_data = {0};
+static rt_mutex_t g_tomato_lock = NULL;
+static bool g_tomato_initialized = false;
 
 // 初始化木鱼计数器
 void screen_context_init_muyu_counter(void)
@@ -92,6 +102,7 @@ void screen_context_init_muyu_counter(void)
         rt_mutex_release(g_muyu_counter_lock);
     }
 }
+
 
 // 线程安全的计数增加
 static void muyu_increment_counter(void)
@@ -250,6 +261,24 @@ static key_context_config_t g_l2_muyu_config = {
     .priority = 110,
     .exclusive = false
 };
+
+static key_context_config_t g_l2_weather_config = {
+    .id = KEY_CTX_L2_WEATHER,
+    .name = "SCREEN_L2_WEATHER",
+    .handler = screen_l2_weather_key_handler,
+    .user_data = NULL,
+    .priority = 110,
+    .exclusive = false
+};
+static key_context_config_t stopwatch_config = {
+    .id = KEY_CTX_L2_STOPWATCH,
+    .name = "SCREEN_L2_STOPWATCH",
+    .handler = screen_l2_stopwatch_key_handler,
+    .user_data = NULL,
+    .priority = 110,
+    .exclusive = false
+};
+
 static int screen_group1_key_handler(int key_idx, button_action_t action, void *user_data)
 {
     (void)user_data;
@@ -269,7 +298,7 @@ static int screen_group1_key_handler(int key_idx, button_action_t action, void *
             break;
             
         case 1:
-            screen_update_sensor_data();
+            screen_enter_level2(SCREEN_L2_WEATHER_GROUP, SCREEN_L2_WEATHER_FORECAST);
             break;
             
         case 2:
@@ -591,6 +620,7 @@ int screen_context_deinit_all(void)
     key_manager_unregister_context(KEY_CTX_MENU_NAVIGATION);
     key_manager_unregister_context(KEY_CTX_SYSTEM);
     key_manager_unregister_context(KEY_CTX_SETTINGS);
+    key_manager_unregister_context(KEY_CTX_L2_WEATHER);
     key_manager_unregister_context(KEY_CTX_L2_TIME);
     key_manager_unregister_context(KEY_CTX_L2_MEDIA);
     key_manager_unregister_context(KEY_CTX_L2_WEB);
@@ -644,9 +674,20 @@ int screen_context_deactivate_all(void)
     key_manager_deactivate_context(KEY_CTX_SYSTEM);
     key_manager_deactivate_context(KEY_CTX_SETTINGS);
     key_manager_deactivate_context(KEY_CTX_UTILITIES);
+    key_manager_deactivate_context(KEY_CTX_L2_WEATHER);
 
     return 0;
 }
+
+
+static key_context_config_t g_l2_tomato_config = {
+    .id = KEY_CTX_L2_TOMATO,
+    .name = "SCREEN_L2_TOMATO",
+    .handler = screen_l2_tomato_key_handler,
+    .user_data = NULL,
+    .priority = 110,
+    .exclusive = false
+};
 
 int screen_context_activate_for_level2(screen_l2_group_t l2_group)
 {
@@ -724,6 +765,40 @@ int screen_context_activate_for_level2(screen_l2_group_t l2_group)
             }
             break;
 
+        case SCREEN_L2_WEATHER_GROUP:
+            if (key_manager_get_context_name(KEY_CTX_L2_WEATHER) == "UNREGISTERED") {
+                ret = key_manager_register_context(&g_l2_weather_config);
+                if (ret != 0) {
+                    return ret;
+                }
+            }
+            
+            ret = key_manager_activate_context(KEY_CTX_L2_WEATHER);
+            break;
+        case SCREEN_L2_TOMATO_GROUP:
+            screen_context_init_tomato_data();
+            
+            if (key_manager_get_context_name(KEY_CTX_L2_TOMATO) == "UNREGISTERED") {
+                ret = key_manager_register_context(&g_l2_tomato_config);
+                if (ret != 0) {
+                    return ret;
+                }
+            }
+            
+            ret = key_manager_activate_context(KEY_CTX_L2_TOMATO);
+            break;
+        case SCREEN_L2_STOPWATCH_GROUP:
+            screen_context_init_stopwatch_data();
+            
+            if (key_manager_get_context_name(KEY_CTX_L2_STOPWATCH) == "UNREGISTERED") {
+                ret = key_manager_register_context(&stopwatch_config);
+                if (ret != 0) {
+                    return ret;
+                }
+            }
+            
+            ret = key_manager_activate_context(KEY_CTX_L2_STOPWATCH);
+            break;    
         default:
             ret = -RT_EINVAL;
             break;
@@ -739,6 +814,8 @@ int screen_context_deactivate_level2(void)
     key_manager_deactivate_context(KEY_CTX_L2_WEB);
     key_manager_deactivate_context(KEY_CTX_L2_SHORTCUT);
     key_manager_deactivate_context(KEY_CTX_L2_MUYU);
+    key_manager_deactivate_context(KEY_CTX_L2_TOMATO);
+    key_manager_deactivate_context(KEY_CTX_L2_STOPWATCH);
     return 0;
 }
 
@@ -774,7 +851,7 @@ static int screen_l2_muyu_key_handler(int key_idx, button_action_t action, void 
 static const key_led_binding_t group4_led_bindings[] = {
     {0, 2, 0xFFD700},   // 按键0 -> LED2: 金色呼吸（木鱼）
     {1, 1, 0xFF6347},   // 按键1 -> LED1: 番茄红呼吸（番茄钟）
-    {2, 0, 0x90EE90},   // 按键2 -> LED0: 浅绿色呼吸（全屏图片）
+    {2, 0, 0x90EE90},   // 按键2 -> LED0: 浅绿色呼吸（秒表）
     {3, 1, 0xFFFFFF},   // 按键3 -> LED1: 白色呼吸（下一组）
 };
 
@@ -783,6 +860,13 @@ static const key_led_binding_t l2_muyu_led_bindings[] = {
     {1, 1, 0xFF8C00},   // 统计 -> LED1: 橙色呼吸
     {2, 0, 0xFFA500},   // 设置 -> LED0: 橙色呼吸
     {3, 1, 0xFFFFFF},   // 返回 -> LED1: 白色呼吸
+};
+
+static const key_led_binding_t l2_weather_led_bindings[] = {
+    {0, 2, 0x00FFFF},   // 按键0 -> LED2: 青色
+    {1, 1, 0xFFFF00},   // 按键1 -> LED1: 黄色
+    {2, 0, 0xFF00FF},   // 按键2 -> LED0: 洋红
+    {3, 1, 0xFFFFFF},   // 按键3 -> LED1: 白色（返回）
 };
 
 /* Group 4按键处理函数实现 */
@@ -812,8 +896,8 @@ static int screen_group4_key_handler(int key_idx, button_action_t action, void *
             break;
             
         case 2:
-            // KEY3: 进入全屏图片L2页面（预留）
-            screen_enter_level2(SCREEN_L2_GALLERY_GROUP, SCREEN_L2_GALLERY_VIEW);
+            // KEY3: 进入秒表L2页面
+            screen_enter_level2(SCREEN_L2_STOPWATCH_GROUP, SCREEN_L2_STOPWATCH_TIMER);
             break;
             
         case 3:
@@ -825,6 +909,51 @@ static int screen_group4_key_handler(int key_idx, button_action_t action, void *
     return 0;
 }
 
+/* L2天气预报按键处理函数 */
+static int screen_l2_weather_key_handler(int key_idx, button_action_t action, void *user_data)
+{
+    (void)user_data;
+    
+    if (action != BUTTON_PRESSED) {
+        return 0;
+    }
+    
+    /* LED绑定配置 */
+    static const key_led_binding_t l2_weather_led_bindings[] = {
+        {0, 2, 0x00FFFF},   // 青色
+        {1, 1, 0xFFFF00},   // 黄色
+        {2, 0, 0xFF00FF},   // 洋红
+        {3, 1, 0xFFFFFF},   // 白色（返回）
+    };
+    
+    /* LED反馈 */
+    const key_led_binding_t *binding = NULL;
+    for (int i = 0; i < sizeof(l2_weather_led_bindings)/sizeof(l2_weather_led_bindings[0]); i++) {
+        if (l2_weather_led_bindings[i].key_index == key_idx) {
+            binding = &l2_weather_led_bindings[i];
+            break;
+        }
+    }
+    
+    if (binding) {
+        event_bus_publish_led_feedback(binding->led_index, binding->color, 800);
+    }
+    
+    switch (key_idx) {
+        case 0:
+        case 1:
+        case 2:
+            /* 预留功能 */
+            break;
+            
+        case 3:
+            /* 返回L1 */
+            screen_return_to_level1();
+            break;
+    }
+    
+    return 0;
+}
 
 /* L2木鱼按键处理函数实现 */
 static int screen_l2_muyu_key_handler(int key_idx, button_action_t action, void *user_data)
@@ -900,5 +1029,610 @@ int screen_context_get_muyu_count(uint32_t *tap_count, uint32_t *total_taps)
     }
     
     muyu_get_counter(tap_count, total_taps);
+    return 0;
+}
+
+
+// 3. 番茄钟初始化函数 (添加到木鱼初始化函数之后)
+
+void screen_context_init_tomato_data(void)
+{
+    if (!g_tomato_lock) {
+        g_tomato_lock = rt_mutex_create("tomato_lock", RT_IPC_FLAG_PRIO);
+        
+        if (g_tomato_lock) {
+            rt_mutex_take(g_tomato_lock, RT_WAITING_FOREVER);
+            
+            // 初始化番茄钟数据
+            memset(&g_tomato_data, 0, sizeof(g_tomato_data));
+            
+            // 设置默认配置
+            g_tomato_data.focus_duration_min = 25;
+            g_tomato_data.short_break_min = 5;
+            g_tomato_data.long_break_min = 15;
+            g_tomato_data.long_break_interval = 4;
+            
+            // 设置初始状态
+            g_tomato_data.current_mode = TOMATO_MODE_FOCUS;
+            g_tomato_data.current_state = TOMATO_STATE_IDLE;
+            g_tomato_data.total_seconds = 25 * 60;
+            g_tomato_data.remaining_seconds = g_tomato_data.total_seconds;
+            g_tomato_data.current_round = 0;
+            g_tomato_data.progress_percent = 0;
+            
+            g_tomato_data.valid = true;
+            g_tomato_data.last_update_tick = rt_tick_get();
+            
+            g_tomato_initialized = true;
+            
+            rt_mutex_release(g_tomato_lock);
+        }
+    }
+}
+
+// 4. 番茄钟倒计时回调函数
+
+
+
+// 导出倒计时处理函数供UI层调用
+void tomato_process_countdown(void)
+{
+    if (!g_tomato_lock) return;
+    
+    rt_mutex_take(g_tomato_lock, RT_WAITING_FOREVER);
+    
+    // ✅ 只有RUNNING状态才执行倒计时
+    if (g_tomato_data.current_state == TOMATO_STATE_RUNNING) {
+        rt_tick_t current_tick = rt_tick_get();
+        rt_tick_t elapsed_ticks = current_tick - g_tomato_data.last_update_tick;
+        
+        // ✅ 防抖: 确保至少过了900ms才执行一次减法
+        if (elapsed_ticks >= rt_tick_from_millisecond(900)) {
+            if (g_tomato_data.remaining_seconds > 0) {
+                g_tomato_data.remaining_seconds--;
+                
+                // 更新进度百分比
+                if (g_tomato_data.total_seconds > 0) {
+                    uint16_t elapsed = g_tomato_data.total_seconds - g_tomato_data.remaining_seconds;
+                    g_tomato_data.progress_percent = (elapsed * 100) / g_tomato_data.total_seconds;
+                }
+                
+                g_tomato_data.last_update_tick = current_tick;
+            } else {
+                // 倒计时完成
+                g_tomato_data.current_state = TOMATO_STATE_COMPLETED;
+                g_tomato_data.progress_percent = 100;
+                
+                // 更新统计数据
+                if (g_tomato_data.current_mode == TOMATO_MODE_FOCUS) {
+                    g_tomato_data.today_completed++;
+                    g_tomato_data.total_completed++;
+                    g_tomato_data.continuous_count++;
+                }
+                
+                g_tomato_data.last_update_tick = current_tick;
+            }
+        }
+    }
+    
+    rt_mutex_release(g_tomato_lock);
+}
+
+// 番茄钟操作函数
+int screen_context_get_tomato_data(tomato_data_t *data)
+{
+    if (!data) return -RT_EINVAL;
+    
+    if (!g_tomato_lock) {
+        *data = g_tomato_data;
+        return 0;
+    }
+    
+    if (rt_interrupt_get_nest() > 0) {
+        *data = g_tomato_data;
+        return 0;
+    }
+    
+    rt_mutex_take(g_tomato_lock, RT_WAITING_FOREVER);
+    *data = g_tomato_data;
+    rt_mutex_release(g_tomato_lock);
+    
+    return 0;
+}
+
+// 开始/继续番茄钟
+int screen_context_handle_tomato_start(void)
+{
+    if (!g_tomato_lock) return -RT_ERROR;
+    
+    rt_mutex_take(g_tomato_lock, RT_WAITING_FOREVER);
+    
+    if (g_tomato_data.current_state == TOMATO_STATE_IDLE ||
+        g_tomato_data.current_state == TOMATO_STATE_PAUSED) {
+        
+        g_tomato_data.current_state = TOMATO_STATE_RUNNING;
+        g_tomato_data.last_update_tick = rt_tick_get();
+        
+        rt_mutex_release(g_tomato_lock);
+        screen_ui_start_tomato_background_display();
+        
+        screen_core_post_update_time();
+        return 0;
+    }
+    
+    rt_mutex_release(g_tomato_lock);
+    return -RT_ERROR;
+}
+
+
+// 暂停番茄钟
+int screen_context_handle_tomato_pause(void)
+{
+    if (!g_tomato_lock) return -RT_ERROR;
+    
+    rt_mutex_take(g_tomato_lock, RT_WAITING_FOREVER);
+    
+    if (g_tomato_data.current_state == TOMATO_STATE_RUNNING) {
+        g_tomato_data.current_state = TOMATO_STATE_PAUSED;
+        g_tomato_data.last_update_tick = rt_tick_get();
+        
+        rt_mutex_release(g_tomato_lock);
+        
+        screen_ui_stop_tomato_background_display();
+        
+        screen_core_post_update_time();
+        return 0;
+    }
+    
+    rt_mutex_release(g_tomato_lock);
+    return -RT_ERROR;
+}
+
+// 停止番茄钟(放弃当前)
+int screen_context_handle_tomato_stop(void)
+{
+    if (!g_tomato_lock) return -RT_ERROR;
+    
+    rt_mutex_take(g_tomato_lock, RT_WAITING_FOREVER);
+    
+    // 重置连续计数
+    if (g_tomato_data.current_mode == TOMATO_MODE_FOCUS) {
+        g_tomato_data.continuous_count = 0;
+    }
+    
+    // 重置状态
+    g_tomato_data.current_state = TOMATO_STATE_IDLE;
+    g_tomato_data.remaining_seconds = g_tomato_data.total_seconds;
+    g_tomato_data.progress_percent = 0;
+    g_tomato_data.last_update_tick = rt_tick_get();
+    
+    rt_mutex_release(g_tomato_lock);
+    screen_ui_stop_tomato_background_display();
+    screen_core_post_update_time();
+    return 0;
+}
+
+// 切换模式
+int screen_context_handle_tomato_mode_switch(void)
+{
+    if (!g_tomato_lock) return -RT_ERROR;
+    
+    if (rt_interrupt_get_nest() > 0) {
+        if (g_tomato_data.current_state != TOMATO_STATE_IDLE) {
+            return -RT_ERROR;
+        }
+        
+        g_tomato_data.current_mode = (g_tomato_data.current_mode + 1) % TOMATO_MODE_MAX;
+        
+        switch (g_tomato_data.current_mode) {
+            case TOMATO_MODE_FOCUS:
+                g_tomato_data.total_seconds = g_tomato_data.focus_duration_min * 60;
+                break;
+            case TOMATO_MODE_SHORT_BREAK:
+                g_tomato_data.total_seconds = g_tomato_data.short_break_min * 60;
+                break;
+            case TOMATO_MODE_LONG_BREAK:
+                g_tomato_data.total_seconds = g_tomato_data.long_break_min * 60;
+                break;
+            default:
+                g_tomato_data.total_seconds = 25 * 60;
+                break;
+        }
+        
+        g_tomato_data.remaining_seconds = g_tomato_data.total_seconds;
+        g_tomato_data.progress_percent = 0;
+        g_tomato_data.last_update_tick = rt_tick_get();
+        
+        screen_core_post_update_time();
+        return 0;
+    }
+    
+    rt_mutex_take(g_tomato_lock, RT_WAITING_FOREVER);
+    
+    if (g_tomato_data.current_state != TOMATO_STATE_IDLE) {
+        rt_mutex_release(g_tomato_lock);
+        return -RT_ERROR;
+    }
+    
+    g_tomato_data.current_mode = (g_tomato_data.current_mode + 1) % TOMATO_MODE_MAX;
+    
+    switch (g_tomato_data.current_mode) {
+        case TOMATO_MODE_FOCUS:
+            g_tomato_data.total_seconds = g_tomato_data.focus_duration_min * 60;
+            break;
+        case TOMATO_MODE_SHORT_BREAK:
+            g_tomato_data.total_seconds = g_tomato_data.short_break_min * 60;
+            break;
+        case TOMATO_MODE_LONG_BREAK:
+            g_tomato_data.total_seconds = g_tomato_data.long_break_min * 60;
+            break;
+        default:
+            g_tomato_data.total_seconds = 25 * 60;
+            break;
+    }
+    
+    g_tomato_data.remaining_seconds = g_tomato_data.total_seconds;
+    g_tomato_data.progress_percent = 0;
+    g_tomato_data.last_update_tick = rt_tick_get();
+    
+    rt_mutex_release(g_tomato_lock);
+    screen_core_post_update_time();
+    return 0;
+}
+
+// 完成确认(用于完成状态后进入下一模式)
+int screen_context_handle_tomato_complete(void)
+{
+    if (!g_tomato_lock) return -RT_ERROR;
+    
+    if (rt_interrupt_get_nest() > 0) {
+        if (g_tomato_data.current_state == TOMATO_STATE_COMPLETED) {
+            tomato_mode_t next_mode;
+            
+            if (g_tomato_data.current_mode == TOMATO_MODE_FOCUS) {
+                g_tomato_data.current_round++;
+                
+                if (g_tomato_data.current_round >= g_tomato_data.long_break_interval) {
+                    next_mode = TOMATO_MODE_LONG_BREAK;
+                    g_tomato_data.current_round = 0;
+                } else {
+                    next_mode = TOMATO_MODE_SHORT_BREAK;
+                }
+            } else {
+                next_mode = TOMATO_MODE_FOCUS;
+            }
+            
+            g_tomato_data.current_mode = next_mode;
+            
+            switch (next_mode) {
+                case TOMATO_MODE_FOCUS:
+                    g_tomato_data.total_seconds = g_tomato_data.focus_duration_min * 60;
+                    break;
+                case TOMATO_MODE_SHORT_BREAK:
+                    g_tomato_data.total_seconds = g_tomato_data.short_break_min * 60;
+                    break;
+                case TOMATO_MODE_LONG_BREAK:
+                    g_tomato_data.total_seconds = g_tomato_data.long_break_min * 60;
+                    break;
+            }
+            
+            g_tomato_data.remaining_seconds = g_tomato_data.total_seconds;
+            g_tomato_data.current_state = TOMATO_STATE_IDLE;
+            g_tomato_data.progress_percent = 0;
+            g_tomato_data.last_update_tick = rt_tick_get();
+            
+            screen_core_post_update_time();
+            return 0;
+        }
+        return -RT_ERROR;
+    }
+    
+    rt_mutex_take(g_tomato_lock, RT_WAITING_FOREVER);
+    
+    if (g_tomato_data.current_state == TOMATO_STATE_COMPLETED) {
+        tomato_mode_t next_mode;
+        
+        if (g_tomato_data.current_mode == TOMATO_MODE_FOCUS) {
+            g_tomato_data.current_round++;
+            
+            if (g_tomato_data.current_round >= g_tomato_data.long_break_interval) {
+                next_mode = TOMATO_MODE_LONG_BREAK;
+                g_tomato_data.current_round = 0;
+            } else {
+                next_mode = TOMATO_MODE_SHORT_BREAK;
+            }
+        } else {
+            next_mode = TOMATO_MODE_FOCUS;
+        }
+        
+        g_tomato_data.current_mode = next_mode;
+        
+        switch (next_mode) {
+            case TOMATO_MODE_FOCUS:
+                g_tomato_data.total_seconds = g_tomato_data.focus_duration_min * 60;
+                break;
+            case TOMATO_MODE_SHORT_BREAK:
+                g_tomato_data.total_seconds = g_tomato_data.short_break_min * 60;
+                break;
+            case TOMATO_MODE_LONG_BREAK:
+                g_tomato_data.total_seconds = g_tomato_data.long_break_min * 60;
+                break;
+        }
+        
+        g_tomato_data.remaining_seconds = g_tomato_data.total_seconds;
+        g_tomato_data.current_state = TOMATO_STATE_IDLE;
+        g_tomato_data.progress_percent = 0;
+        g_tomato_data.last_update_tick = rt_tick_get();
+        
+        rt_mutex_release(g_tomato_lock);
+        screen_ui_stop_tomato_background_display();
+        screen_core_post_update_time();
+        return 0;
+    }
+    
+    rt_mutex_release(g_tomato_lock);
+    return -RT_ERROR;
+}
+
+// 6. 番茄钟按键处理函数 (添加到screen_context.c中的L2按键处理函数区域)
+
+/* LED绑定配置 - 番茄钟 */
+static const key_led_binding_t l2_tomato_led_bindings[] = {
+    {0, 2, 0xFF6347},   // 模式切换/放弃 -> LED2: 番茄红
+    {1, 1, 0x00FF00},   // 开始/暂停 -> LED1: 绿色
+    {2, 0, 0xFFD700},   // 设置(预留) -> LED0: 金色
+    {3, 1, 0xFFFFFF},   // 返回 -> LED1: 白色
+};
+
+/* L2番茄钟按键处理函数 */
+static int screen_l2_tomato_key_handler(int key_idx, button_action_t action, void *user_data)
+{
+    (void)user_data;
+    
+    if (action != BUTTON_PRESSED) {
+        return 0;
+    }
+    
+    // LED反馈
+    const key_led_binding_t *binding = NULL;
+    for (int i = 0; i < sizeof(l2_tomato_led_bindings)/sizeof(l2_tomato_led_bindings[0]); i++) {
+        if (l2_tomato_led_bindings[i].key_index == key_idx) {
+            binding = &l2_tomato_led_bindings[i];
+            break;
+        }
+    }
+    
+    if (binding) {
+        event_bus_publish_led_feedback(binding->led_index, binding->color, 800);
+    }
+    
+    // 获取当前番茄钟状态
+    tomato_data_t tomato_data;
+    screen_context_get_tomato_data(&tomato_data);
+    
+    switch (key_idx) {
+        case 0:  // KEY1 - ✅ 改进: 待机=切换模式, 运行/暂停=停止重置, 完成=确认
+            if (tomato_data.current_state == TOMATO_STATE_IDLE) {
+                // 待机状态: 模式切换
+                screen_context_handle_tomato_mode_switch();
+            } 
+            else if (tomato_data.current_state == TOMATO_STATE_COMPLETED) {
+                // 完成状态: 确认完成,进入下一模式
+                screen_context_handle_tomato_complete();
+            }
+            // ✅ 新增: 运行/暂停状态下,KEY1 = 停止并重置
+            else if (tomato_data.current_state == TOMATO_STATE_RUNNING ||
+                     tomato_data.current_state == TOMATO_STATE_PAUSED) {
+                screen_context_handle_tomato_stop();
+            }
+            break;
+            
+        case 1:  // KEY2: 开始/暂停
+            if (tomato_data.current_state == TOMATO_STATE_IDLE ||
+                tomato_data.current_state == TOMATO_STATE_PAUSED) {
+                screen_context_handle_tomato_start();
+            } else if (tomato_data.current_state == TOMATO_STATE_RUNNING) {
+                screen_context_handle_tomato_pause();
+            } else if (tomato_data.current_state == TOMATO_STATE_COMPLETED) {
+                // 完成状态下也可以作为确认键
+                screen_context_handle_tomato_complete();
+            }
+            break;
+            
+        case 2:  // KEY3: 设置(预留)
+            // 预留用于进入设置界面
+            break;
+            
+        case 3:  // KEY4: 返回L1
+            screen_return_to_level1();
+            break;
+    }
+    
+    return 0;
+}
+
+/* 全局秒表数据和互斥锁 */
+static stopwatch_data_t g_stopwatch_data = {0};
+static rt_mutex_t g_stopwatch_lock = NULL;
+static bool g_stopwatch_initialized = false;
+
+/* 秒表初始化 */
+void screen_context_init_stopwatch_data(void)
+{
+    if (!g_stopwatch_lock) {
+        g_stopwatch_lock = rt_mutex_create("sw_lock", RT_IPC_FLAG_PRIO);
+        
+        if (g_stopwatch_lock) {
+            rt_mutex_take(g_stopwatch_lock, RT_WAITING_FOREVER);
+            
+            memset(&g_stopwatch_data, 0, sizeof(g_stopwatch_data));
+            g_stopwatch_data.valid = true;
+            g_stopwatch_data.is_running = false;
+            g_stopwatch_data.elapsed_deciseconds = 0;
+            g_stopwatch_data.pause_duration = 0;
+            
+            g_stopwatch_initialized = true;
+            
+            rt_mutex_release(g_stopwatch_lock);
+        }
+    } else {
+        // 非首次进入,保持数据不清零
+        rt_mutex_take(g_stopwatch_lock, RT_WAITING_FOREVER);
+        // 不修改 elapsed_deciseconds,保留计时数据
+        rt_mutex_release(g_stopwatch_lock);
+    }
+}
+
+
+/* 获取秒表数据 */
+int screen_context_get_stopwatch_data(stopwatch_data_t *data)
+{
+    if (!data) return -RT_EINVAL;
+    
+    if (!g_stopwatch_lock) {
+        *data = g_stopwatch_data;
+        return 0;
+    }
+    
+    if (rt_interrupt_get_nest() > 0) {
+        *data = g_stopwatch_data;
+        return 0;
+    }
+    
+    rt_mutex_take(g_stopwatch_lock, RT_WAITING_FOREVER);
+
+    if (g_stopwatch_data.is_running) {
+        rt_tick_t current_tick = rt_tick_get();
+        rt_tick_t elapsed_ticks = current_tick - g_stopwatch_data.start_tick - g_stopwatch_data.pause_duration;
+        
+        // 更新实时经过的时间（十分之一秒）
+        g_stopwatch_data.elapsed_deciseconds = (elapsed_ticks * 10) / RT_TICK_PER_SECOND;
+    }
+    
+    *data = g_stopwatch_data;
+    rt_mutex_release(g_stopwatch_lock);
+    
+    return 0;
+}
+
+/* 开始/继续秒表 */
+int screen_context_handle_stopwatch_start(void)
+{
+    if (!g_stopwatch_lock) return -RT_ERROR;
+    
+    rt_mutex_take(g_stopwatch_lock, RT_WAITING_FOREVER);
+    
+    if (!g_stopwatch_data.is_running) {
+        if (g_stopwatch_data.elapsed_deciseconds == 0) {
+            // 从零开始
+            g_stopwatch_data.start_tick = rt_tick_get();
+            g_stopwatch_data.pause_duration = 0;
+        } else {
+            // 从暂停继续
+            rt_tick_t pause_elapsed = rt_tick_get() - g_stopwatch_data.pause_tick;
+            g_stopwatch_data.pause_duration += pause_elapsed;
+        }
+        
+        g_stopwatch_data.is_running = true;
+    }
+    
+    rt_mutex_release(g_stopwatch_lock);
+    
+    screen_core_post_update_time();
+    return 0;
+}
+
+/* 暂停秒表 */
+int screen_context_handle_stopwatch_pause(void)
+{
+    if (!g_stopwatch_lock) return -RT_ERROR;
+    
+    rt_mutex_take(g_stopwatch_lock, RT_WAITING_FOREVER);
+    
+    if (g_stopwatch_data.is_running) {
+        g_stopwatch_data.is_running = false;
+        g_stopwatch_data.pause_tick = rt_tick_get();
+    }
+    
+    rt_mutex_release(g_stopwatch_lock);
+    
+    screen_core_post_update_time();
+    return 0;
+}
+
+/* 重置秒表 */
+int screen_context_handle_stopwatch_reset(void)
+{
+    if (!g_stopwatch_lock) return -RT_ERROR;
+    
+    rt_mutex_take(g_stopwatch_lock, RT_WAITING_FOREVER);
+    
+    g_stopwatch_data.is_running = false;
+    g_stopwatch_data.elapsed_deciseconds = 0;
+    g_stopwatch_data.start_tick = 0;
+    g_stopwatch_data.pause_tick = 0;
+    g_stopwatch_data.pause_duration = 0;
+    
+    rt_mutex_release(g_stopwatch_lock);
+    
+    screen_core_post_update_time();
+    return 0;
+}
+
+/* L2秒表按键处理函数 */
+static int screen_l2_stopwatch_key_handler(int key_idx, button_action_t action, void *user_data)
+{
+    (void)user_data;
+    
+    if (action != BUTTON_PRESSED) {
+        return 0;
+    }
+    
+    /* LED绑定配置 */
+    static const key_led_binding_t l2_stopwatch_led_bindings[] = {
+        {0, 2, 0x00FF00},   // 开始/暂停 -> LED2: 绿色
+        {1, 1, 0xFF0000},   // 重置 -> LED1: 红色
+        {2, 0, 0xFFD700},   // 预留 -> LED0: 金色
+        {3, 1, 0xFFFFFF},   // 返回 -> LED1: 白色
+    };
+    
+    /* LED反馈 */
+    const key_led_binding_t *binding = NULL;
+    for (int i = 0; i < sizeof(l2_stopwatch_led_bindings)/sizeof(l2_stopwatch_led_bindings[0]); i++) {
+        if (l2_stopwatch_led_bindings[i].key_index == key_idx) {
+            binding = &l2_stopwatch_led_bindings[i];
+            break;
+        }
+    }
+    
+    if (binding) {
+        event_bus_publish_led_feedback(binding->led_index, binding->color, 800);
+    }
+    
+    // 获取当前秒表状态
+    stopwatch_data_t stopwatch_data;
+    screen_context_get_stopwatch_data(&stopwatch_data);
+    
+    switch (key_idx) {
+        case 0:  // KEY1: 开始/暂停
+            if (stopwatch_data.is_running) {
+                screen_context_handle_stopwatch_pause();
+            } else {
+                screen_context_handle_stopwatch_start();
+            }
+            break;
+            
+        case 1:  // KEY2: 重置
+            screen_context_handle_stopwatch_reset();
+            break;
+            
+        case 2:  // KEY3: 预留功能
+            break;
+            
+        case 3:  // KEY4: 返回L1
+            screen_return_to_level1();
+            break;
+    }
+    
     return 0;
 }

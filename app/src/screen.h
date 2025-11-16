@@ -21,6 +21,8 @@ void screen_process_switch_request(void);
 
 int screen_update_weather(const weather_data_t *data);
 
+int screen_update_forecast(const weather_forecast_data_t *data);
+
 int screen_update_stock(const stock_data_t *data);
 
 int screen_update_system_monitor(const system_monitor_data_t *data);

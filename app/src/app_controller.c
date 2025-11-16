@@ -6,7 +6,7 @@
 #include "screen.h"
 #include "event_bus.h"
 #include <string.h>
-#include "led_compat.h"
+#include "led_effects_manager.h"
 #include <board.h>
 #include "bf0_hal.h"
 #include "rtthread.h"
@@ -38,6 +38,9 @@ int app_controller_init(void)
     }
 
     hid_device_init(0, HAL_Get_USB_Base());
+    
+    // 等待USB枚举稳定
+    rt_thread_mdelay(200);
     
     if (key_manager_init() != 0) {
         return -1;

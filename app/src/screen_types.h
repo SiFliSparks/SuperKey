@@ -11,7 +11,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-
+#include <rtthread.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -21,7 +21,7 @@ typedef enum {
     SCREEN_GROUP_1 = 0,  /* 第一组：时间/天气/股票 */
     SCREEN_GROUP_2,      /* 第二组：CPU-GPU/内存/网络 */
     SCREEN_GROUP_3,      /* 第三组：HID快捷键 */
-    SCREEN_GROUP_4,      /* 第四组：实用工具（木鱼/番茄钟/全屏图片） */
+    SCREEN_GROUP_4,      /* 第四组：实用工具（木鱼/番茄钟/秒表） */
     SCREEN_GROUP_MAX
 } screen_group_t;
 
@@ -35,14 +35,14 @@ typedef enum {
 /* 第二层级组定义 - 新增实用工具相关组 */
 typedef enum {
     SCREEN_L2_TIME_GROUP = 0,    /* 时间扩展组 */
-    SCREEN_L2_WEATHER_GROUP,     /* 天气扩展组（预留） */
+    SCREEN_L2_WEATHER_GROUP,     /* 天气扩展组 */
     SCREEN_L2_SYSTEM_GROUP,      /* 系统扩展组（预留） */
     SCREEN_L2_MEDIA_GROUP,       /* 媒体控制扩展组 */
     SCREEN_L2_WEB_GROUP,         
     SCREEN_L2_SHORTCUT_GROUP,    
     SCREEN_L2_MUYU_GROUP,        /* 赛博木鱼扩展组 - 新增 */
     SCREEN_L2_TOMATO_GROUP,      /* 番茄钟扩展组 - 新增 */
-    SCREEN_L2_GALLERY_GROUP,     /* 全屏图片扩展组 - 新增 */
+    SCREEN_L2_STOPWATCH_GROUP,     /* 秒表扩展组 - 新增 */
     SCREEN_L2_GROUP_MAX
 } screen_l2_group_t;
 
@@ -66,8 +66,11 @@ typedef enum {
     /* 番茄钟组页面 - 新增 */
     SCREEN_L2_TOMATO_TIMER = 5,  /* 番茄钟计时器 */
     
-    /* 全屏图片组页面 - 新增 */
-    SCREEN_L2_GALLERY_VIEW = 6,  /* 图片查看器 */
+    /* 秒表组页面 - 新增 */
+    SCREEN_L2_STOPWATCH_TIMER = 6,  /* 图片查看器 */
+
+    /* 天气预报组页面 - 新增，追加到末尾 */
+    SCREEN_L2_WEATHER_FORECAST = 7, /* 天气预报页 */
     
     /* 其他组页面（预留） */
     SCREEN_L2_PAGE_MAX
@@ -103,15 +106,15 @@ typedef struct {
     uint32_t completed_sessions; /* 完成的番茄钟数 */
 } tomato_timer_data_t;
 
-/* 全屏图片数据结构 - 新增（预留） */
+/* 秒表数据结构 - 新增（预留） */
 typedef struct {
-    uint8_t current_image_index; /* 当前图片索引 */
-    uint8_t total_images;        /* 图片总数 */
-    bool slideshow_enabled;      /* 幻灯片模式 */
-    uint32_t slide_interval_ms;  /* 幻灯片间隔 */
-    bool zoom_enabled;           /* 缩放功能 */
-    float zoom_factor;           /* 缩放比例 */
-} gallery_data_t;
+    uint32_t elapsed_deciseconds;  /* 已用时间(十分之一秒) */
+    bool is_running;               /* 是否正在运行 */
+    rt_tick_t start_tick;          /* 开始时刻 */
+    rt_tick_t pause_tick;          /* 暂停时刻 */
+    uint32_t pause_duration;       /* 累计暂停时长(tick) */
+    bool valid;                    /* 数据有效性 */
+} stopwatch_data_t;
 
 /* 简化版天气数据结构 - 仅包含finsh协议支持的字段 */
 typedef struct {
@@ -127,6 +130,25 @@ typedef struct {
     int weather_code;        /* 天气代码 */
     int city_code;           /* 城市代码 */
 } weather_data_t;
+
+/* 单日天气预报数据结构 */
+typedef struct {
+    char text[32];           /* 天气描述，如"阴"、"多云" */
+    int temp_max;            /* 最高温度(°C) */
+    int temp_min;            /* 最低温度(°C) */
+    char wind_dir[32];       /* 风向，如"西北风" */
+    char wind_scale[16];     /* 风力等级，如"3-4" */
+    bool valid;              /* 数据有效性 */
+} forecast_day_data_t;
+
+/* 三天天气预报数据结构 */
+typedef struct {
+    forecast_day_data_t day0;  /* 今天 */
+    forecast_day_data_t day1;  /* 明天 */
+    forecast_day_data_t day2;  /* 后天 */
+    char update_time[32];      /* 更新时间 */
+    bool valid;                /* 整体数据有效性 */
+} weather_forecast_data_t;
 
 /* 简化版股票数据结构 - 仅包含finsh协议支持的字段 */
 typedef struct {

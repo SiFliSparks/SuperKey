@@ -103,7 +103,7 @@ static int system_init_stage(int stage, const char *stage_name, int (*init_func)
         return result;
     }
     
-    // 每个阶段完成后等待一小段时间，确保初始化稳定
+
     rt_thread_mdelay(1);
     return 0;
 }
@@ -113,19 +113,19 @@ static int system_init_stage(int stage, const char *stage_name, int (*init_func)
 static void system_error_recovery(void)
 {
     
-    // 停止所有LED效果
+
     led_effects_stop_all_effects();
     led_effects_turn_off_all_leds();
     
-    // 清理数据和事件
+
     data_manager_cleanup_expired_data();
     data_manager_reset_all_data();
     event_bus_cleanup();
     
-    // 重置屏幕到默认组 - 使用正确的函数名
+
     screen_switch_group(SCREEN_GROUP_1);
     
-    // 闪烁红色LED表示恢复模式
+
     for (int i = 0; i < 3; i++) {
         led_effects_set_all_leds(RGB_COLOR_RED);
         rt_thread_mdelay(200);
@@ -137,12 +137,12 @@ static void system_error_recovery(void)
 static void system_graceful_shutdown(void)
 {
     
-    // 1. 停止所有效果和指示灯
+
     screen_context_cleanup_background_breathing();
     led_effects_stop_all_effects();
     led_effects_turn_off_all_leds();
     
-    // 2. 清理各个组件（按初始化的逆序）
+
     cleanup_triple_screen_display();
     app_controller_deinit();
     sht30_controller_deinit();
@@ -151,7 +151,7 @@ static void system_graceful_shutdown(void)
     led_effects_manager_deinit();
     event_bus_deinit();
     
-    // 3. 清理系统状态
+
     if (g_system_state.system_lock) {
         rt_mutex_delete(g_system_state.system_lock);
         g_system_state.system_lock = RT_NULL;
@@ -163,91 +163,61 @@ static void system_graceful_shutdown(void)
 int main(void)
 {
     rt_err_t ret = RT_EOK;
-    HAL_PIN_Set(PAD_PA07, GPIO_A7, PIN_NOPULL, 1);//初始化LDO
-    BSP_GPIO_Set(7, 1, 1);
-    // 初始化系统状态
+
     memset(&g_system_state, 0, sizeof(g_system_state));
     g_system_state.system_lock = rt_mutex_create("sys_lock", RT_IPC_FLAG_PRIO);
     
-    // 阶段1: 显示系统初始化
+
     ret = system_init_stage(1, "Display System", init_display_system);
-    if (ret != 0) goto error_exit;
     
-    // 阶段2: 数据池初始化
+
     ret = system_init_stage(2, "Data Pool", init_data_pool);
-    if (ret != 0) goto error_exit;
     
-    // 阶段3: 事件总线初始化 (高优先级)
+
     ret = system_init_stage(3, "Event Bus", event_bus_init);
-    if (ret != 0) goto error_exit;
     
-    // 阶段4: LED效果管理器初始化
-    ret = system_init_stage(4, "LED Effects Manager", led_effects_manager_init);
+
+    ret = system_init_stage(4, "LED Effects Manager (Init)",  led_effects_manager_init);
     
-    // 阶段5: 数据管理器初始化
+
     ret = system_init_stage(5, "Data Manager", data_manager_init);
-    if (ret != 0) goto error_exit;
     
-    // 阶段6: 串口数据处理器初始化
+
     ret = system_init_stage(6, "Serial Data Handler", serial_data_handler_init);
-    
-    // 阶段7: HID和应用控制器初始化
+
+
     ret = system_init_stage(7, "HID & App Controller", app_controller_init);
+
+    rt_thread_mdelay(500);
+
+
+    ret = system_init_stage(8, "LED Effects Manager (Start)",  led_effects_manager_start); 
+
+
+    ret = system_init_stage(9, "SHT30 Sensor", init_sht30_sensor);
     
-    // 阶段8: 传感器初始化 (可选)
-    ret = system_init_stage(8, "SHT30 Sensor", init_sht30_sensor);
-    
-    // 阶段9: 屏幕系统初始化
-    ret = system_init_stage(9, "Screen System", init_screen_system);
-    if (ret != 0) goto error_exit;
-    
-    // 阶段10: 启动LED欢迎效果
-    system_show_startup_progress(10, 10, "Startup Effects & System Ready");
-    
-    // 第一阶段：白色流水灯
-    led_effect_handle_t flowing = led_effects_flowing(0xFFCCFF, 1000, 255, 2000);
-    rt_thread_mdelay(1000);
-    
-    // 第二阶段：蓝色呼吸灯 (持续运行)
-    led_effect_handle_t breathing = led_effects_breathing(RGB_COLOR_BLUE, 2000, 255, 0);
-    
+
+    ret = system_init_stage(10, "Screen System", init_screen_system);
+        
     g_system_state.system_ready = true;
     g_system_state.last_health_check = rt_tick_get();
-    
-    
+
     while (g_system_state.system_ready) {
-        // 1. 处理LVGL定时器
+
         uint32_t ms = lv_timer_handler();
         
-        // 2. 处理屏幕切换请求
+
         screen_process_switch_request();
         screen_context_process_background_restore();
         
-        // 5. 控制主循环频率
+
         uint32_t sleep_time = (ms > 0 && ms < 100) ? ms : 50;
         rt_thread_mdelay(sleep_time);
     }
     
-    // 正常退出清理
+
     system_graceful_shutdown();
     return 0;
-    
-error_exit:
-    // 错误退出清理
-    rt_kprintf("[MAIN] CRITICAL ERROR during initialization, performing emergency cleanup\n");
-    g_system_state.in_error_state = true;
-    // 清理背景呼吸灯系统（新增）
-    screen_context_cleanup_background_breathing();    
-    // 尝试显示错误LED指示
-    for (int i = 0; i < 5; i++) {
-        led_effects_set_all_leds(RGB_COLOR_RED);
-        rt_thread_mdelay(100);
-        led_effects_set_all_leds(RGB_COLOR_BLACK);
-        rt_thread_mdelay(100);
-    }
-    
-    system_graceful_shutdown();
-    return ret;
 }
 
 /* 导出给其他模块的系统状态查询函数 */

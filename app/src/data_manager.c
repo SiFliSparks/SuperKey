@@ -7,11 +7,13 @@ static struct {
     weather_data_t weather;
     stock_data_t stock;
     system_monitor_data_t system;
-    
+    weather_forecast_data_t forecast;
+
     rt_tick_t weather_update_tick;
     rt_tick_t stock_update_tick;
     rt_tick_t system_update_tick;
-    
+    rt_tick_t forecast_update_tick;
+
     uint32_t cleanup_count;
     rt_tick_t last_cleanup_tick;
     
@@ -50,6 +52,20 @@ int data_manager_update_weather(const weather_data_t *data)
     g_data_store.weather_update_tick = rt_tick_get();
     
     rt_mutex_release(g_data_store.lock);
+    return 0;
+}
+
+int data_manager_update_forecast(const weather_forecast_data_t *data)
+{
+    if (!data || !g_data_store.initialized) {
+        return -RT_ERROR;
+    }
+    
+    rt_mutex_take(g_data_store.lock, RT_WAITING_FOREVER);
+    g_data_store.forecast = *data;
+    g_data_store.forecast_update_tick = rt_tick_get();
+    rt_mutex_release(g_data_store.lock);
+    
     return 0;
 }
 
@@ -96,6 +112,24 @@ int data_manager_get_weather(weather_data_t *data)
     }
     
     *data = g_data_store.weather;
+    rt_mutex_release(g_data_store.lock);
+    
+    return data->valid ? 0 : -RT_EEMPTY;
+}
+
+int data_manager_get_forecast(weather_forecast_data_t *data)
+{
+    if (!data || !g_data_store.initialized) {
+        return -RT_ERROR;
+    }
+    
+    rt_mutex_take(g_data_store.lock, RT_WAITING_FOREVER);
+    
+    if (is_data_expired(g_data_store.forecast_update_tick)) {
+        g_data_store.forecast.valid = false;
+    }
+    
+    *data = g_data_store.forecast;
     rt_mutex_release(g_data_store.lock);
     
     return data->valid ? 0 : -RT_EEMPTY;
@@ -182,13 +216,16 @@ int data_manager_reset_all_data(void)
     rt_mutex_take(g_data_store.lock, RT_WAITING_FOREVER);
     
     memset(&g_data_store.weather, 0, sizeof(weather_data_t));
+    memset(&g_data_store.forecast, 0, sizeof(weather_forecast_data_t));
     memset(&g_data_store.stock, 0, sizeof(stock_data_t));
     memset(&g_data_store.system, 0, sizeof(system_monitor_data_t));
     
     g_data_store.weather.valid = false;
     g_data_store.stock.valid = false;
     g_data_store.system.valid = false;
-    
+    g_data_store.forecast.valid = false;
+
+    g_data_store.forecast_update_tick = 0;
     g_data_store.weather_update_tick = 0;
     g_data_store.stock_update_tick = 0;
     g_data_store.system_update_tick = 0;
@@ -227,8 +264,9 @@ bool data_manager_is_data_fresh(const char *type)
         fresh = !is_data_expired(g_data_store.stock_update_tick) && g_data_store.stock.valid;
     } else if (strcmp(type, "system") == 0) {
         fresh = !is_data_expired(g_data_store.system_update_tick) && g_data_store.system.valid;
+    } else if (strcmp(type, "forecast") == 0) {
+        fresh = !is_data_expired(g_data_store.forecast_update_tick) && g_data_store.forecast.valid;
     }
-    
     rt_mutex_release(g_data_store.lock);
     return fresh;
 }
@@ -248,6 +286,8 @@ rt_tick_t data_manager_get_last_update(const char *type)
         tick = g_data_store.stock_update_tick;
     } else if (strcmp(type, "system") == 0) {
         tick = g_data_store.system_update_tick;
+    } else if (strcmp(type, "forecast") == 0) {
+        tick = g_data_store.forecast_update_tick;
     }
     
     rt_mutex_release(g_data_store.lock);
@@ -306,6 +346,24 @@ static int data_manager_system_event_handler(const event_t *event, void *user_da
     return -1;
 }
 
+static int data_manager_forecast_event_handler(const event_t *event, void *user_data)
+{
+    (void)user_data;
+    
+    if (event->type == EVENT_DATA_FORECAST_UPDATED) {
+        const weather_forecast_data_t *forecast = &event->data.forecast.forecast;
+        
+        rt_mutex_take(g_data_store.lock, RT_WAITING_FOREVER);
+        g_data_store.forecast = *forecast;
+        g_data_store.forecast_update_tick = rt_tick_get();
+        rt_mutex_release(g_data_store.lock);
+        
+        return 0;
+    }
+    
+    return -1;
+}
+
 int data_manager_init(void)
 {
     if (g_data_store.initialized) {
@@ -333,6 +391,8 @@ int data_manager_init(void)
     
     event_bus_subscribe(EVENT_DATA_WEATHER_UPDATED, data_manager_weather_event_handler, 
                        NULL, EVENT_PRIORITY_NORMAL);
+    event_bus_subscribe(EVENT_DATA_FORECAST_UPDATED, data_manager_forecast_event_handler, 
+                       NULL, EVENT_PRIORITY_NORMAL);
     event_bus_subscribe(EVENT_DATA_STOCK_UPDATED, data_manager_stock_event_handler, 
                        NULL, EVENT_PRIORITY_NORMAL);
     event_bus_subscribe(EVENT_DATA_SYSTEM_UPDATED, data_manager_system_event_handler, 
@@ -351,7 +411,8 @@ int data_manager_deinit(void)
     event_bus_unsubscribe(EVENT_DATA_WEATHER_UPDATED, data_manager_weather_event_handler);
     event_bus_unsubscribe(EVENT_DATA_STOCK_UPDATED, data_manager_stock_event_handler);
     event_bus_unsubscribe(EVENT_DATA_SYSTEM_UPDATED, data_manager_system_event_handler);
-    
+    event_bus_unsubscribe(EVENT_DATA_FORECAST_UPDATED, data_manager_forecast_event_handler);
+
     if (g_data_store.lock) {
         rt_mutex_delete(g_data_store.lock);
         g_data_store.lock = NULL;

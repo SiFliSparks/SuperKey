@@ -82,10 +82,13 @@ static int screen_data_event_handler(const event_t *event, void *user_data)
             break;
             
         case EVENT_DATA_SENSOR_UPDATED:
-            /* 传感器数据作为天气更新的一部分 */
             screen_core_post_update_weather(NULL);
             break;
-            
+
+        case EVENT_DATA_FORECAST_UPDATED:  // 新增：直接发消息
+            screen_core_post_update_forecast(&event->data.forecast.forecast);
+            break;
+
         default:
             return -1;
     }
@@ -96,6 +99,26 @@ static int screen_data_event_handler(const event_t *event, void *user_data)
 /**********************
  *   公共API实现
  **********************/
+int screen_update_forecast(const weather_forecast_data_t *data)
+{
+    if (!data) {
+        return -1;
+    }
+    
+    /* 通过data_manager更新 */
+    int ret = data_manager_update_forecast(data);
+    if (ret == 0) {
+        /* 发布事件通知屏幕更新 */
+        event_data_forecast_t forecast_event = { .forecast = *data };
+        event_bus_publish(EVENT_DATA_FORECAST_UPDATED, 
+                         &forecast_event, 
+                         sizeof(forecast_event),
+                         EVENT_PRIORITY_NORMAL, 
+                         MODULE_ID_SERIAL_COMM);
+    }
+    
+    return ret;
+}
 
 void create_triple_screen_display(void)
 {
@@ -213,7 +236,7 @@ void screen_process_switch_request(void)
 }
 
 /**********************
- *   数据更新API - 线程安全版本
+ *   数据更新API
  **********************/
 
 /**

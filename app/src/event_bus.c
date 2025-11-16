@@ -1,5 +1,3 @@
-// event_bus.c - 完整重新设计版本
-
 #include "event_bus.h"
 #include <string.h>
 #include <stdlib.h>
@@ -27,7 +25,7 @@ static struct {
     rt_mutex_t stats_lock;
     bool initialized;
     
-    //  错误恢复相关
+
     uint32_t error_count;
     rt_tick_t last_health_check;
     bool health_monitor_enabled;
@@ -41,13 +39,13 @@ static bool is_in_interrupt_context(void);
 static void event_bus_health_check(void);
 static void event_bus_emergency_cleanup(void);
 
-/* 检查是否在中断上下文中 */
+
 static bool is_in_interrupt_context(void)
 {
     return (rt_interrupt_get_nest() > 0);
 }
 
-/* 事件处理线程 - 增强版本，LED事件优先处理 */
+
 static void event_processing_thread(void *parameter)
 {
     (void)parameter;
@@ -63,7 +61,7 @@ static void event_processing_thread(void *parameter)
             consecutive_errors = 0;  // 重置错误计数
             processed_events++;
             
-            // 为LED反馈事件创建特殊处理路径
+
             if (event.type == EVENT_LED_FEEDBACK_REQUEST) {
                 int retry_count = 3;
                 bool handled = false;
@@ -107,7 +105,7 @@ static void event_processing_thread(void *parameter)
                 }
                 
                 if (!handled && retry_count == 0) {
-                    // 所有重试都失败，将事件重新入队一次
+
                     static uint8_t led_requeue_count = 0;
                     if (led_requeue_count < 2) {
                         rt_mq_send(g_event_bus.event_queue, &event, sizeof(event_t));
@@ -121,7 +119,7 @@ static void event_processing_thread(void *parameter)
                 }
                 
             } else {
-                // 其他事件的正常处理逻辑 - 使用较短的超时时间
+
                 if (rt_mutex_take(g_event_bus.subscribers_lock, 200) == RT_EOK) {
                     
                     bool handled = false;
@@ -160,9 +158,9 @@ static void event_processing_thread(void *parameter)
             }
             
         } else if (result == -RT_ETIMEOUT) {
-            // 超时是正常的，用于检查停止信号
+
             
-            // 每100次超时执行一次健康检查
+
             if (g_event_bus.health_monitor_enabled && (processed_events % 100) == 0) {
                 event_bus_health_check();
             }
@@ -182,7 +180,7 @@ static void event_processing_thread(void *parameter)
     }
 }
 
-/* 健康检查函数 */
+
 static void event_bus_health_check(void)
 {
     rt_tick_t now = rt_tick_get();
@@ -193,7 +191,7 @@ static void event_bus_health_check(void)
     
     g_event_bus.last_health_check = now;
     
-    // 检查队列使用率
+
     if (g_event_bus.event_queue) {
         rt_mq_t mq = g_event_bus.event_queue;
         uint32_t used = mq->max_msgs - mq->entry;
@@ -201,7 +199,7 @@ static void event_bus_health_check(void)
         
         if (usage_percent > 80) {
             
-            // 清理一些旧事件
+
             event_t dummy_event;
             int cleaned = 0;
             while (cleaned < 5 && rt_mq_recv(g_event_bus.event_queue, &dummy_event, 
@@ -215,7 +213,7 @@ static void event_bus_health_check(void)
         }
     }
     
-    // 检查错误率
+
     if (g_event_bus.error_count > 0) {
         uint32_t total_events = g_event_bus.published_count + g_event_bus.processed_count;
         if (total_events > 0) {
@@ -227,11 +225,11 @@ static void event_bus_health_check(void)
     }
 }
 
-/* 紧急清理函数 */
+
 static void event_bus_emergency_cleanup(void)
 {
     
-    // 清空消息队列
+
     if (g_event_bus.event_queue) {
         event_t dummy_event;
         int cleaned = 0;
@@ -245,7 +243,7 @@ static void event_bus_emergency_cleanup(void)
         }
     }
     
-    // 重置错误计数
+
     g_event_bus.error_count = 0;
 }
 
@@ -280,7 +278,7 @@ static void update_stats(uint32_t *counter)
     }
 }
 
-/* 事件总线初始化 */
+
 int event_bus_init(void)
 {
     if (g_event_bus.initialized) {
@@ -289,7 +287,7 @@ int event_bus_init(void)
     
     memset(&g_event_bus, 0, sizeof(g_event_bus));
     
-    // 创建事件队列
+
     g_event_bus.event_queue = rt_mq_create("event_queue", 
                                           sizeof(event_t),
                                           EVENT_QUEUE_SIZE,
@@ -298,14 +296,14 @@ int event_bus_init(void)
         return -RT_ENOMEM;
     }
     
-    // 创建订阅者锁
+
     g_event_bus.subscribers_lock = rt_mutex_create("event_sub_lock", RT_IPC_FLAG_PRIO);
     if (!g_event_bus.subscribers_lock) {
         rt_mq_delete(g_event_bus.event_queue);
         return -RT_ENOMEM;
     }
     
-    // 创建统计锁
+
     g_event_bus.stats_lock = rt_mutex_create("event_stats_lock", RT_IPC_FLAG_PRIO);
     if (!g_event_bus.stats_lock) {
         rt_mutex_delete(g_event_bus.subscribers_lock);
@@ -313,7 +311,7 @@ int event_bus_init(void)
         return -RT_ENOMEM;
     }
     
-    // 创建停止信号量
+
     g_event_bus.stop_sem = rt_sem_create("event_stop", 0, RT_IPC_FLAG_PRIO);
     if (!g_event_bus.stop_sem) {
         rt_mutex_delete(g_event_bus.stats_lock);
@@ -322,7 +320,7 @@ int event_bus_init(void)
         return -RT_ENOMEM;
     }
     
-    // 创建事件处理线程
+
     g_event_bus.event_thread = rt_thread_create("event_proc",
                                                event_processing_thread,
                                                NULL,
@@ -337,12 +335,12 @@ int event_bus_init(void)
         return -RT_ENOMEM;
     }
     
-    // 初始化状态
+
     g_event_bus.running = true;
     g_event_bus.health_monitor_enabled = true;
     g_event_bus.last_health_check = rt_tick_get();
     
-    // 启动事件处理线程
+
     rt_thread_startup(g_event_bus.event_thread);
     
     g_event_bus.initialized = true;
@@ -350,23 +348,23 @@ int event_bus_init(void)
     return 0;
 }
 
-/* 事件总线去初始化 */
+
 int event_bus_deinit(void)
 {
     if (!g_event_bus.initialized) {
         return 0;
     }
     
-    // 停止线程
+
     g_event_bus.running = false;
     if (g_event_bus.stop_sem) {
         rt_sem_release(g_event_bus.stop_sem);
     }
     
-    // 等待线程结束
+
     rt_thread_mdelay(200);
     
-    // 清理资源
+
     if (g_event_bus.event_thread) {
         g_event_bus.event_thread = NULL;
     }
@@ -395,7 +393,7 @@ int event_bus_deinit(void)
     return 0;
 }
 
-/* 发布事件 - 增强版本，区分中断和线程上下文 */
+
 int event_bus_publish(event_type_t type, const void *event_data, size_t data_size, 
                      event_priority_t priority, uint32_t source_module_id)
 {
@@ -419,19 +417,19 @@ int event_bus_publish(event_type_t type, const void *event_data, size_t data_siz
     
     rt_err_t result;
     
-    // 区分中断和线程上下文
+
     if (is_in_interrupt_context()) {
-        // 在中断上下文中，只使用非阻塞发送
+
         result = rt_mq_send(g_event_bus.event_queue, &event, sizeof(event_t));
         
-        // 在中断中不能安全更新统计，只能粗略计数
+
         if (result == RT_EOK) {
             g_event_bus.published_count++;
         } else {
             g_event_bus.dropped_count++;
         }
     } else {
-        // 在线程上下文中，可以使用阻塞发送
+
         result = rt_mq_send(g_event_bus.event_queue, &event, sizeof(event_t));
         
         if (result == RT_EOK) {
@@ -444,7 +442,7 @@ int event_bus_publish(event_type_t type, const void *event_data, size_t data_siz
     return (result == RT_EOK) ? 0 : -RT_ERROR;
 }
 
-/* 同步发布事件 */
+
 int event_bus_publish_sync(event_type_t type, const void *event_data, size_t data_size,
                           event_priority_t priority, uint32_t source_module_id)
 {
@@ -452,7 +450,7 @@ int event_bus_publish_sync(event_type_t type, const void *event_data, size_t dat
         return -RT_ERROR;
     }
     
-    // 在中断上下文中不支持同步发布
+
     if (is_in_interrupt_context()) {
         return event_bus_publish(type, event_data, data_size, priority, source_module_id);
     }
@@ -467,7 +465,7 @@ int event_bus_publish_sync(event_type_t type, const void *event_data, size_t dat
         memcpy(&event.data, event_data, data_size);
     }
     
-    // 使用短超时获取锁
+
     if (rt_mutex_take(g_event_bus.subscribers_lock, 1000) != RT_EOK) {
         return -RT_ETIMEOUT;
     }
@@ -506,7 +504,7 @@ int event_bus_publish_sync(event_type_t type, const void *event_data, size_t dat
     return handled ? 0 : -RT_ERROR;
 }
 
-/* 订阅事件 */
+
 int event_bus_subscribe(event_type_t event_type, event_handler_t handler, 
                        void *user_data, event_priority_t min_priority)
 {
@@ -514,7 +512,7 @@ int event_bus_subscribe(event_type_t event_type, event_handler_t handler,
         return -RT_EINVAL;
     }
     
-    // 使用短超时避免死锁
+
     if (rt_mutex_take(g_event_bus.subscribers_lock, 1000) != RT_EOK) {
         return -RT_ETIMEOUT;
     }
@@ -543,7 +541,7 @@ int event_bus_subscribe(event_type_t event_type, event_handler_t handler,
     return 0;
 }
 
-/* 取消订阅事件 */
+
 int event_bus_unsubscribe(event_type_t event_type, event_handler_t handler)
 {
     if (!g_event_bus.initialized || !handler) {
@@ -565,7 +563,7 @@ int event_bus_unsubscribe(event_type_t event_type, event_handler_t handler)
     return (slot >= 0) ? 0 : -RT_ERROR;
 }
 
-/* 启用/禁用订阅 */
+
 int event_bus_enable_subscription(event_type_t event_type, event_handler_t handler, bool enable)
 {
     if (!g_event_bus.initialized || !handler) {
@@ -586,7 +584,7 @@ int event_bus_enable_subscription(event_type_t event_type, event_handler_t handl
     return (slot >= 0) ? 0 : -RT_ERROR;
 }
 
-/* 获取统计信息 */
+
 int event_bus_get_stats(uint32_t *published_count, uint32_t *processed_count, 
                        uint32_t *dropped_count, uint32_t *queue_size)
 {
@@ -600,7 +598,7 @@ int event_bus_get_stats(uint32_t *published_count, uint32_t *processed_count,
         if (dropped_count) *dropped_count = g_event_bus.dropped_count;
         rt_mutex_release(g_event_bus.stats_lock);
     } else {
-        // 如果无法获取锁，返回缓存值
+
         if (published_count) *published_count = g_event_bus.published_count;
         if (processed_count) *processed_count = g_event_bus.processed_count;
         if (dropped_count) *dropped_count = g_event_bus.dropped_count;
@@ -614,7 +612,7 @@ int event_bus_get_stats(uint32_t *published_count, uint32_t *processed_count,
     return 0;
 }
 
-/* 清理队列 */
+
 int event_bus_cleanup(void)
 {
     if (!g_event_bus.initialized || !g_event_bus.event_queue) {
@@ -636,7 +634,7 @@ int event_bus_cleanup(void)
     return cleaned;
 }
 
-/* 便捷函数：发布数据更新事件 */
+
 int event_bus_publish_data_update(event_type_t data_type, const void *data)
 {
     size_t data_size = 0;
@@ -651,6 +649,9 @@ int event_bus_publish_data_update(event_type_t data_type, const void *data)
     case EVENT_DATA_SYSTEM_UPDATED:
         data_size = sizeof(event_data_system_t);
         break;
+    case EVENT_DATA_FORECAST_UPDATED:
+        data_size = sizeof(event_data_forecast_t);
+        break;
     default:
         data_size = sizeof(event_data_generic_t);
         break;
@@ -660,7 +661,7 @@ int event_bus_publish_data_update(event_type_t data_type, const void *data)
                            EVENT_PRIORITY_NORMAL, MODULE_ID_DATA_MANAGER);
 }
 
-/* 便捷函数：发布屏幕切换事件 */
+
 int event_bus_publish_screen_switch(screen_group_t target_group, bool force)
 {
     event_data_screen_switch_t switch_data = {
@@ -673,7 +674,7 @@ int event_bus_publish_screen_switch(screen_group_t target_group, bool force)
                            sizeof(switch_data), EVENT_PRIORITY_HIGH, MODULE_ID_SCREEN);
 }
 
-/* 便捷函数：发布错误事件 */
+
 int event_bus_publish_error(int error_code, const char *error_msg, const char *module_name)
 {
     event_data_error_t error_data = {
@@ -690,7 +691,7 @@ int event_bus_publish_error(int error_code, const char *error_msg, const char *m
                            EVENT_PRIORITY_HIGH, MODULE_ID_SYSTEM);
 }
 
-/* 便利函数：发布LED反馈事件 - 优化版本 */
+
 int event_bus_publish_led_feedback(int led_index, uint32_t color, uint32_t duration_ms)
 {
     if (!g_event_bus.initialized || !g_event_bus.running) {
@@ -710,11 +711,11 @@ int event_bus_publish_led_feedback(int led_index, uint32_t color, uint32_t durat
     event.source_module_id = MODULE_ID_LED;
     event.data.led = led_data;
     
-    // 使用非阻塞发送，但检查队列状态
+
     rt_err_t result = rt_mq_send(g_event_bus.event_queue, &event, sizeof(event_t));
     
     if (result == RT_EOK) {
-        // 在中断中不能安全更新统计，粗略计数
+
         if (!is_in_interrupt_context()) {
             update_stats(&g_event_bus.published_count);
         } else {
@@ -731,20 +732,20 @@ int event_bus_publish_led_feedback(int led_index, uint32_t color, uint32_t durat
     return (result == RT_EOK) ? 0 : -RT_ERROR;
 }
 
-/*  启用/禁用健康监控 */
+
 int event_bus_enable_health_monitor(bool enable)
 {
     g_event_bus.health_monitor_enabled = enable;
     return 0;
 }
 
-/*  获取错误统计 */
+
 uint32_t event_bus_get_error_count(void)
 {
     return g_event_bus.error_count;
 }
 
-/*  重置统计 */
+
 int event_bus_reset_stats(void)
 {
     if (!g_event_bus.initialized) {

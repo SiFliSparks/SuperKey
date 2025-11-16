@@ -17,6 +17,7 @@ typedef enum {
     SCREEN_MSG_UPDATE_STOCK,
     SCREEN_MSG_UPDATE_SYSTEM,
     SCREEN_MSG_UPDATE_SENSOR,
+    SCREEN_MSG_UPDATE_FORECAST,
     SCREEN_MSG_SWITCH_GROUP,
     SCREEN_MSG_ENTER_L2,
     SCREEN_MSG_RETURN_L1,
@@ -44,6 +45,7 @@ typedef struct {
         screen_switch_msg_t switch_msg;
         screen_l2_enter_msg_t l2_enter_msg;
         weather_data_t weather_data;
+        weather_forecast_data_t forecast_data;
         stock_data_t stock_data;
         system_monitor_data_t system_data;
     } data;
@@ -98,7 +100,7 @@ int screen_core_post_update_weather(const weather_data_t *data);
 int screen_core_post_update_stock(const stock_data_t *data);
 int screen_core_post_update_system(const system_monitor_data_t *data);
 int screen_core_post_cleanup_request(void);
-
+int screen_core_post_update_forecast(const weather_forecast_data_t *data);
 /* 消息处理 - 仅在GUI线程调用 */
 int screen_core_process_messages(void);
 

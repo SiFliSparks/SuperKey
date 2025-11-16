@@ -17,6 +17,7 @@
 static rt_device_t serial_device = RT_NULL;
 static rt_sem_t rx_sem = RT_NULL;
 static rt_timer_t watchdog_timer = RT_NULL;
+static void check_and_publish_forecast(void);
 
 static struct {
     rt_tick_t last_received_tick;
@@ -412,11 +413,13 @@ static const char* city_code_map[] = {
 #define CITY_CODE_MAX 314
 
 static struct {
+    /* 时间数据 */
     char time_str[16];
     char date_str[16];
     char weekday_str[16];
     bool time_valid;
     
+    /* 当前天气数据 */
     int temperature;
     int weather_code;
     int humidity;
@@ -424,11 +427,13 @@ static struct {
     int city_code;
     bool weather_valid;
     
+    /* 股票数据 */
     char stock_name[64];
     float stock_price;
     float stock_change;
     bool stock_valid;
     
+    /* 系统监控数据 */
     float cpu_usage;
     float cpu_temp;
     float mem_usage;
@@ -437,6 +442,27 @@ static struct {
     float net_up;
     float net_down;
     bool system_valid;
+
+    char forecast_day0_text[32];
+    int forecast_day0_temp_max;
+    int forecast_day0_temp_min;
+    char forecast_day0_wind_dir[32];
+    char forecast_day0_wind_scale[16];
+    bool forecast_day0_valid;
+    char forecast_day1_text[32];
+    int forecast_day1_temp_max;
+    int forecast_day1_temp_min;
+    char forecast_day1_wind_dir[32];
+    char forecast_day1_wind_scale[16];
+    bool forecast_day1_valid;
+    char forecast_day2_text[32];
+    int forecast_day2_temp_max;
+    int forecast_day2_temp_min;
+    char forecast_day2_wind_dir[32];
+    char forecast_day2_wind_scale[16];
+    bool forecast_day2_valid;
+    bool forecast_valid;
+    
 } g_finsh_data = {0};
 
 static void update_connection_status(void)
@@ -479,6 +505,142 @@ static void safe_strcpy(char *dest, const char *src, size_t dest_size)
     memcpy(dest, src, copy_len);
     dest[copy_len] = '\0';
 }
+
+static void handle_forecast_data(const char *key, const char *value)
+{
+    if (!key || !value) return;
+    
+    /* Day0 数据处理 */
+    if (strcmp(key, "forecast_day0_text") == 0) {
+        safe_strcpy(g_finsh_data.forecast_day0_text, value, 
+                   sizeof(g_finsh_data.forecast_day0_text));
+        
+    } else if (strcmp(key, "forecast_day0_temp_max") == 0) {
+        g_finsh_data.forecast_day0_temp_max = atoi(value);
+        
+    } else if (strcmp(key, "forecast_day0_temp_min") == 0) {
+        g_finsh_data.forecast_day0_temp_min = atoi(value);
+        
+    } else if (strcmp(key, "forecast_day0_wind_dir") == 0) {
+        safe_strcpy(g_finsh_data.forecast_day0_wind_dir, value,
+                   sizeof(g_finsh_data.forecast_day0_wind_dir));
+        
+    } else if (strcmp(key, "forecast_day0_wind_scale") == 0) {
+        safe_strcpy(g_finsh_data.forecast_day0_wind_scale, value,
+                   sizeof(g_finsh_data.forecast_day0_wind_scale));
+        g_finsh_data.forecast_day0_valid = true;  /* 最后一个字段，标记day0有效 */
+    }
+    
+    /* Day1 数据处理 */
+    else if (strcmp(key, "forecast_day1_text") == 0) {
+        safe_strcpy(g_finsh_data.forecast_day1_text, value,
+                   sizeof(g_finsh_data.forecast_day1_text));
+        
+    } else if (strcmp(key, "forecast_day1_temp_max") == 0) {
+        g_finsh_data.forecast_day1_temp_max = atoi(value);
+        
+    } else if (strcmp(key, "forecast_day1_temp_min") == 0) {
+        g_finsh_data.forecast_day1_temp_min = atoi(value);
+        
+    } else if (strcmp(key, "forecast_day1_wind_dir") == 0) {
+        safe_strcpy(g_finsh_data.forecast_day1_wind_dir, value,
+                   sizeof(g_finsh_data.forecast_day1_wind_dir));
+        
+    } else if (strcmp(key, "forecast_day1_wind_scale") == 0) {
+        safe_strcpy(g_finsh_data.forecast_day1_wind_scale, value,
+                   sizeof(g_finsh_data.forecast_day1_wind_scale));
+        g_finsh_data.forecast_day1_valid = true;  /* 最后一个字段，标记day1有效 */
+    }
+    
+    /* Day2 数据处理 */
+    else if (strcmp(key, "forecast_day2_text") == 0) {
+        safe_strcpy(g_finsh_data.forecast_day2_text, value,
+                   sizeof(g_finsh_data.forecast_day2_text));
+        
+    } else if (strcmp(key, "forecast_day2_temp_max") == 0) {
+        g_finsh_data.forecast_day2_temp_max = atoi(value);
+        
+    } else if (strcmp(key, "forecast_day2_temp_min") == 0) {
+        g_finsh_data.forecast_day2_temp_min = atoi(value);
+        
+    } else if (strcmp(key, "forecast_day2_wind_dir") == 0) {
+        safe_strcpy(g_finsh_data.forecast_day2_wind_dir, value,
+                   sizeof(g_finsh_data.forecast_day2_wind_dir));
+        
+    } else if (strcmp(key, "forecast_day2_wind_scale") == 0) {
+        safe_strcpy(g_finsh_data.forecast_day2_wind_scale, value,
+                   sizeof(g_finsh_data.forecast_day2_wind_scale));
+        g_finsh_data.forecast_day2_valid = true;  /* 最后一个字段，标记day2有效 */
+    }
+    
+    /* 检查是否三天数据都收齐，如果是则发布事件 */
+    check_and_publish_forecast();
+}
+
+static void check_and_publish_forecast(void)
+{
+    if (g_finsh_data.forecast_day0_valid && 
+        g_finsh_data.forecast_day1_valid && 
+        g_finsh_data.forecast_day2_valid) {
+        
+        weather_forecast_data_t forecast = {0};
+        
+        /* Day0 */
+        safe_strcpy(forecast.day0.text, g_finsh_data.forecast_day0_text,
+                   sizeof(forecast.day0.text));
+        forecast.day0.temp_max = g_finsh_data.forecast_day0_temp_max;
+        forecast.day0.temp_min = g_finsh_data.forecast_day0_temp_min;
+        safe_strcpy(forecast.day0.wind_dir, g_finsh_data.forecast_day0_wind_dir,
+                   sizeof(forecast.day0.wind_dir));
+        safe_strcpy(forecast.day0.wind_scale, g_finsh_data.forecast_day0_wind_scale,
+                   sizeof(forecast.day0.wind_scale));
+        forecast.day0.valid = true;
+        
+        /* Day1 */
+        safe_strcpy(forecast.day1.text, g_finsh_data.forecast_day1_text,
+                   sizeof(forecast.day1.text));
+        forecast.day1.temp_max = g_finsh_data.forecast_day1_temp_max;
+        forecast.day1.temp_min = g_finsh_data.forecast_day1_temp_min;
+        safe_strcpy(forecast.day1.wind_dir, g_finsh_data.forecast_day1_wind_dir,
+                   sizeof(forecast.day1.wind_dir));
+        safe_strcpy(forecast.day1.wind_scale, g_finsh_data.forecast_day1_wind_scale,
+                   sizeof(forecast.day1.wind_scale));
+        forecast.day1.valid = true;
+        
+        /* Day2 */
+        safe_strcpy(forecast.day2.text, g_finsh_data.forecast_day2_text,
+                   sizeof(forecast.day2.text));
+        forecast.day2.temp_max = g_finsh_data.forecast_day2_temp_max;
+        forecast.day2.temp_min = g_finsh_data.forecast_day2_temp_min;
+        safe_strcpy(forecast.day2.wind_dir, g_finsh_data.forecast_day2_wind_dir,
+                   sizeof(forecast.day2.wind_dir));
+        safe_strcpy(forecast.day2.wind_scale, g_finsh_data.forecast_day2_wind_scale,
+                   sizeof(forecast.day2.wind_scale));
+        forecast.day2.valid = true;
+        
+        forecast.valid = true;
+        time_t now = time(NULL);
+        if (now != (time_t)-1) {
+            struct tm *tm_info = localtime(&now);
+            if (tm_info) {
+                snprintf(forecast.update_time, sizeof(forecast.update_time),
+                        "%02d:%02d:%02d", 
+                        tm_info->tm_hour, tm_info->tm_min, tm_info->tm_sec);
+            }
+        }
+        
+        /* 发布事件 - 使用现有的event_bus接口 */
+        event_data_forecast_t forecast_event = { .forecast = forecast };
+        event_bus_publish(EVENT_DATA_FORECAST_UPDATED, 
+                         &forecast_event, 
+                         sizeof(forecast_event),
+                         EVENT_PRIORITY_NORMAL, 
+                         MODULE_ID_SERIAL_COMM);
+        
+        g_finsh_data.forecast_valid = true;
+    }
+}
+
 
 static void remove_quotes(char *str)
 {
@@ -697,7 +859,8 @@ static void handle_finsh_key_value(const char *key, const char *value)
 {
     if (!key || !value) return;
     
-    if (strcmp(key, "time") == 0 || strcmp(key, "date") == 0 || strcmp(key, "weekday") == 0) {
+    if (strcmp(key, "time") == 0 || strcmp(key, "date") == 0 || 
+        strcmp(key, "weekday") == 0) {
         handle_time_data(key, value);
     }
     else if (strcmp(key, "temp") == 0 || strcmp(key, "weather_code") == 0 || 
@@ -714,6 +877,10 @@ static void handle_finsh_key_value(const char *key, const char *value)
              strcmp(key, "gpu_temp") == 0 || strcmp(key, "net_up") == 0 || 
              strcmp(key, "net_down") == 0) {
         handle_system_data(key, value);
+    }
+    /* 新增 */
+    else if (strncmp(key, "forecast_day", 12) == 0) {
+        handle_forecast_data(key, value);
     }
     else {
         rt_kprintf("[Finsh] Unknown key: %s = %s\n", key, value);
@@ -767,7 +934,6 @@ static void serial_rx_thread_entry(void *parameter)
     static char line_buffer[SERIAL_RX_BUFFER_SIZE];
     static int line_index = 0;
     static uint32_t consecutive_errors = 0;
-    static rt_tick_t last_hid_check = 0;
     
     g_serial_status.last_received_tick = rt_tick_get();
     g_serial_status.connection_alive = false;
@@ -793,17 +959,6 @@ static void serial_rx_thread_entry(void *parameter)
         }
         
         consecutive_errors = 0;
-        
-        rt_tick_t now = rt_tick_get();
-        if ((now - last_hid_check) > rt_tick_from_millisecond(30000)) {
-            if (hid_device_ready()) {
-                int sem_count = hid_get_semaphore_count();
-                if (sem_count > 1) {
-                    hid_reset_semaphore();
-                }
-            }
-            last_hid_check = now;
-        }
         
         if (ch == '\n' || ch == '\r') {
             if (line_index > 0) {

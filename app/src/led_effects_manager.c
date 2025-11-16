@@ -1,5 +1,3 @@
-// led_effects_manager.c - 完整重新设计版本（修复编译错误）
-
 #include "led_effects_manager.h"
 #include "drv_rgbled.h"
 #include "event_bus.h"
@@ -9,10 +7,9 @@
 
 #define MAX_CONCURRENT_EFFECTS  4
 #define MAX_CUSTOM_EFFECTS      8
-#define LED_UPDATE_INTERVAL_MS  20
+#define LED_UPDATE_INTERVAL_MS  10
 #define LED_THREAD_STACK_SIZE   2048
 #define LED_THREAD_PRIORITY     12
-
 /* LED更新消息类型 */
 typedef enum {
     LED_MSG_UPDATE_TICK,        // 定时更新
@@ -76,7 +73,7 @@ static struct {
     uint32_t actual_led_count;
     uint8_t global_brightness;
     
-    // 线程和通信
+
     rt_thread_t led_thread;
     rt_mq_t led_msg_queue;
     rt_timer_t update_timer;
@@ -85,6 +82,7 @@ static struct {
     int next_effect_id;
     bool initialized;
     bool running;
+    bool started;
 } g_led_mgr = {0};
 
 /* 完整的前向声明 - 确保所有函数都在使用前声明 */
@@ -95,7 +93,6 @@ static void led_process_message(const led_message_t *msg);
 static void led_do_update_effects(void);
 static void led_do_update_hardware(void);
 static int led_effects_hardware_init(void);
-static void led_effects_configure_pins(void);
 static int apply_effect_static(const led_effect_handle_internal_t *effect, uint32_t *buffer);
 static int apply_effect_breathing(const led_effect_handle_internal_t *effect, uint32_t *buffer);
 static int apply_effect_flowing(const led_effect_handle_internal_t *effect, uint32_t *buffer);
@@ -107,10 +104,7 @@ static int led_effects_hardware_init(void)
 {
     HAL_PMU_ConfigPeriLdo(PMU_PERI_LDO3_3V3, true, true);
     
-    // 配置PWM引脚
-    led_effects_configure_pins();
-    
-    // 等待硬件稳定
+
     rt_thread_mdelay(100);
     return 0;
 }
@@ -137,20 +131,12 @@ static int led_feedback_event_handler(const event_t *event, void *user_data)
     
     return led_send_message(&msg, false);
 }
-
-
-/* 配置PWM引脚 */
-static void led_effects_configure_pins(void)
-{
-    HAL_PIN_Set(PAD_PA10, GPTIM2_CH1, PIN_NOPULL, 1);
-}
-
 /* 定时器回调 - 只在中断上下文中发送消息 */
 static void led_update_timer_callback(void *parameter)
 {
     (void)parameter;
     
-    // 在中断上下文中只发送非阻塞消息
+
     led_message_t msg = {.type = LED_MSG_UPDATE_TICK};
     rt_mq_send(g_led_mgr.led_msg_queue, &msg, sizeof(msg));
 }
@@ -163,13 +149,13 @@ static void led_effects_thread_entry(void *parameter)
     rt_err_t result;
     
     while (g_led_mgr.running) {
-        // 等待消息，超时时间为100ms
+
         result = rt_mq_recv(g_led_mgr.led_msg_queue, &msg, sizeof(msg), 100);
         
         if (result == RT_EOK) {
             led_process_message(&msg);
         } else if (result == -RT_ETIMEOUT) {
-            // 超时是正常的，继续循环
+
             continue;
         } else {
             rt_thread_mdelay(10);
@@ -205,7 +191,7 @@ static void led_process_message(const led_message_t *msg)
             
         case LED_MSG_START_EFFECT:
             {
-                // 查找空闲的效果槽
+
                 int slot = -1;
                 for (int i = 0; i < MAX_CONCURRENT_EFFECTS; i++) {
                     if (!g_led_mgr.effects[i].active) {
@@ -226,7 +212,7 @@ static void led_process_message(const led_message_t *msg)
                     effect->id = g_led_mgr.next_effect_id++;
                     effect_id = effect->id;
                     
-                    // 参数检查和修正
+
                     if (effect->config.led_start >= g_led_mgr.actual_led_count) {
                         effect->config.led_start = 0;
                     }
@@ -238,12 +224,12 @@ static void led_process_message(const led_message_t *msg)
                     }
                 }
                 
-                // 返回效果ID
+
                 if (msg->data.start_effect.effect_id_out) {
                     *msg->data.start_effect.effect_id_out = effect_id;
                 }
                 
-                // 发送完成信号
+
                 if (msg->data.start_effect.done_sem) {
                     rt_sem_release(msg->data.start_effect.done_sem);
                 }
@@ -317,7 +303,7 @@ static int led_send_message(const led_message_t *msg, bool sync)
     
     rt_err_t result;
     if (sync) {
-        // RT-Thread中没有rt_mq_send_wait，使用循环尝试
+
         int retry_count = 100; // 最多重试100次，总共1秒
         do {
             result = rt_mq_send(g_led_mgr.led_msg_queue, (void*)msg, sizeof(*msg));
@@ -336,12 +322,12 @@ static int led_send_message(const led_message_t *msg, bool sync)
 
 static void led_do_update_effects(void)
 {
-    // 清空LED缓冲区
+
     memset(g_led_mgr.led_buffer, 0, g_led_mgr.actual_led_count * sizeof(uint32_t));
     
     uint32_t current_tick = rt_tick_get();
     
-    // 处理所有活动效果
+
     for (int i = 0; i < MAX_CONCURRENT_EFFECTS; i++) {
         led_effect_handle_internal_t *effect = &g_led_mgr.effects[i];
         
@@ -349,7 +335,7 @@ static void led_do_update_effects(void)
             continue;
         }
         
-        // 检查效果是否超时
+
         if (effect->config.duration_ms > 0) {
             uint32_t elapsed_ms = (current_tick - effect->start_tick) * 1000 / RT_TICK_PER_SECOND;
             if (elapsed_ms >= effect->config.duration_ms) {
@@ -359,12 +345,12 @@ static void led_do_update_effects(void)
             }
         }
         
-        // 更新效果内部计时器
+
         uint32_t delta_ms = (current_tick - effect->last_update_tick) * 1000 / RT_TICK_PER_SECOND;
         effect->effect_tick += delta_ms;
         effect->last_update_tick = current_tick;
         
-        // 应用效果
+
         switch (effect->config.type) {
             case LED_EFFECT_STATIC:
                 apply_effect_static(effect, g_led_mgr.led_buffer);
@@ -383,10 +369,10 @@ static void led_do_update_effects(void)
         }
     }
     
-    // 应用手动设置的LED（但允许LED反馈效果覆盖）
+
     for (uint32_t i = 0; i < g_led_mgr.actual_led_count; i++) {
         if (g_led_mgr.manual_led_mask[i]) {
-            // 检查是否有LED反馈效果正在运行
+
             bool has_feedback_effect = false;
             for (int j = 0; j < MAX_CONCURRENT_EFFECTS; j++) {
                 led_effect_handle_internal_t *effect = &g_led_mgr.effects[j];
@@ -400,7 +386,7 @@ static void led_do_update_effects(void)
                 }
             }
             
-            // 只有没有LED反馈效果时才应用手动设置
+
             if (!has_feedback_effect) {
                 g_led_mgr.led_buffer[i] = g_led_mgr.manual_led_buffer[i];
             }
@@ -415,7 +401,7 @@ static void led_do_update_hardware(void)
         return;
     }
     
-    // 应用全局亮度
+
     uint32_t *brightness_buffer = (uint32_t *)rt_malloc(g_led_mgr.actual_led_count * sizeof(uint32_t));
     if (!brightness_buffer) {
         return;
@@ -425,7 +411,7 @@ static void led_do_update_hardware(void)
         brightness_buffer[i] = led_effects_apply_brightness(g_led_mgr.led_buffer[i], g_led_mgr.global_brightness);
     }
     
-    // 使用drv_rgbled的多LED控制API
+
     struct rt_rgbled_multi_configuration multi_config = {
         .led_count = g_led_mgr.actual_led_count,
         .color_array = brightness_buffer
@@ -442,22 +428,22 @@ int led_effects_manager_init(void)
         return 0;
     }
     
-    // 1. 硬件初始化
+
     led_effects_hardware_init();
     rt_thread_mdelay(500);
     
-    // 2. 查找RGB设备
+
     g_led_mgr.rgb_device = rgb_find_device(NULL);
     if (!g_led_mgr.rgb_device) {
         return -RT_ERROR;
     }
     
-    // 3. 获取LED数量
+
     uint32_t max_led_count = 0;
     rt_err_t result = rt_device_control(g_led_mgr.rgb_device, RGB_CMD_GET_CAPABILITY, &max_led_count);
     g_led_mgr.actual_led_count = (result == RT_EOK) ? max_led_count : 3;
     
-    // 4. 分配缓冲区
+
     g_led_mgr.led_buffer = (uint32_t *)rt_malloc(g_led_mgr.actual_led_count * sizeof(uint32_t));
     g_led_mgr.manual_led_buffer = (uint32_t *)rt_malloc(g_led_mgr.actual_led_count * sizeof(uint32_t));
     g_led_mgr.manual_led_mask = (bool *)rt_malloc(g_led_mgr.actual_led_count * sizeof(bool));
@@ -466,20 +452,20 @@ int led_effects_manager_init(void)
         return -RT_ENOMEM;
     }
     
-    // 5. 创建消息队列
+
     g_led_mgr.led_msg_queue = rt_mq_create("led_mq", sizeof(led_message_t), 16, RT_IPC_FLAG_PRIO);
     if (!g_led_mgr.led_msg_queue) {
         return -RT_ENOMEM;
     }
     
-    // 6. 创建关闭信号量
+
     g_led_mgr.shutdown_sem = rt_sem_create("led_shutdown", 0, RT_IPC_FLAG_PRIO);
     if (!g_led_mgr.shutdown_sem) {
         rt_mq_delete(g_led_mgr.led_msg_queue);
         return -RT_ENOMEM;
     }
     
-    // 7. 创建LED处理线程
+
     g_led_mgr.led_thread = rt_thread_create("led_effects",
                                            led_effects_thread_entry,
                                            RT_NULL,
@@ -492,7 +478,7 @@ int led_effects_manager_init(void)
         return -RT_ENOMEM;
     }
     
-    // 8. 创建定时器
+
     g_led_mgr.update_timer = rt_timer_create("led_timer",
                                              led_update_timer_callback,
                                              RT_NULL,
@@ -502,7 +488,7 @@ int led_effects_manager_init(void)
         return -RT_ENOMEM;
     }
     
-    // 9. 初始化状态
+
     memset(g_led_mgr.effects, 0, sizeof(g_led_mgr.effects));
     memset(g_led_mgr.led_buffer, 0, g_led_mgr.actual_led_count * sizeof(uint32_t));
     memset(g_led_mgr.manual_led_buffer, 0, g_led_mgr.actual_led_count * sizeof(uint32_t));
@@ -512,15 +498,56 @@ int led_effects_manager_init(void)
     g_led_mgr.next_effect_id = 1;
     g_led_mgr.running = true;
     g_led_mgr.initialized = true;
-    
-    // 10. 启动线程和定时器
-    rt_thread_startup(g_led_mgr.led_thread);
-    rt_timer_start(g_led_mgr.update_timer);
-    
-    // 11. 订阅LED反馈事件
-    event_bus_subscribe(EVENT_LED_FEEDBACK_REQUEST, led_feedback_event_handler, 
-                       NULL, EVENT_PRIORITY_NORMAL);
+    g_led_mgr.started = false; 
     return 0;
+}
+
+/* ============================================================================
+ * 启动LED系统（在USB初始化后调用）
+ * ============================================================================ */
+int led_effects_manager_start(void)
+{
+    if (!g_led_mgr.initialized) {
+        rt_kprintf("[LED] Error: Not initialized, cannot start\n");
+        return -RT_ERROR;
+    }
+    
+    if (g_led_mgr.started) {
+        rt_kprintf("[LED] Warning: Already started\n");
+        return 0;
+    }
+    
+    rt_kprintf("[LED] Starting effects manager...\n");
+    
+
+    rt_thread_startup(g_led_mgr.led_thread);
+    rt_kprintf("[LED] - Thread started\n");
+    
+
+    rt_timer_start(g_led_mgr.update_timer);
+    rt_kprintf("[LED] - Timer started (interval: %dms)\n", LED_UPDATE_INTERVAL_MS);
+    
+
+    event_bus_subscribe(EVENT_LED_FEEDBACK_REQUEST, 
+                       led_feedback_event_handler, 
+                       NULL, 
+                       EVENT_PRIORITY_NORMAL);
+    rt_kprintf("[LED] - Event subscription registered\n");
+    
+
+    g_led_mgr.started = true;
+    
+    rt_kprintf("[LED] ✓ Effects manager started successfully\n");
+    
+    return 0;
+}
+
+/* ============================================================================
+ * 检查LED系统是否已启动
+ * ============================================================================ */
+bool led_effects_is_started(void)
+{
+    return g_led_mgr.started;
 }
 
 /* LED效果管理器去初始化 */
@@ -530,24 +557,25 @@ int led_effects_manager_deinit(void)
         return 0;
     }
     
-    // 1. 取消事件订阅
-    event_bus_unsubscribe(EVENT_LED_FEEDBACK_REQUEST, led_feedback_event_handler);
-    
-    // 2. 停止定时器
+    if (g_led_mgr.started) {
+        event_bus_unsubscribe(EVENT_LED_FEEDBACK_REQUEST, led_feedback_event_handler);
+        rt_kprintf("[LED] - Event subscription removed\n");
+    }
+
     if (g_led_mgr.update_timer) {
         rt_timer_stop(g_led_mgr.update_timer);
         rt_timer_delete(g_led_mgr.update_timer);
         g_led_mgr.update_timer = RT_NULL;
     }
     
-    // 2. 发送关闭消息给线程
+
     led_message_t shutdown_msg = {.type = LED_MSG_SHUTDOWN};
     led_send_message(&shutdown_msg, false);
     
-    // 3. 等待线程结束
+
     rt_sem_take(g_led_mgr.shutdown_sem, 5000);
     
-    // 4. 清理资源
+
     if (g_led_mgr.shutdown_sem) {
         rt_sem_delete(g_led_mgr.shutdown_sem);
         g_led_mgr.shutdown_sem = RT_NULL;
@@ -574,6 +602,7 @@ int led_effects_manager_deinit(void)
     }
     
     g_led_mgr.initialized = false;
+    g_led_mgr.started = false;
     return 0;
 }
 
@@ -584,7 +613,9 @@ int led_effects_set_led(uint8_t led_index, uint32_t color)
     if (!g_led_mgr.initialized) {
         return -RT_ERROR;
     }
-    
+    if (!g_led_mgr.started) {
+        return 0;
+    }    
     led_message_t msg = {
         .type = LED_MSG_SET_LED,
         .data.set_led = {
@@ -601,7 +632,9 @@ int led_effects_set_all_leds(uint32_t color)
     if (!g_led_mgr.initialized) {
         return -RT_ERROR;
     }
-    
+    if (!g_led_mgr.started) {
+        return 0;
+    }     
     led_message_t msg = {
         .type = LED_MSG_SET_ALL_LEDS,
         .data.set_all = {
@@ -617,7 +650,9 @@ int led_effects_set_global_brightness(uint8_t brightness)
     if (!g_led_mgr.initialized) {
         return -RT_ERROR;
     }
-    
+    if (!g_led_mgr.started) {
+        return 0;
+    }     
     led_message_t msg = {
         .type = LED_MSG_SET_BRIGHTNESS,
         .data.set_brightness = {
@@ -633,7 +668,9 @@ led_effect_handle_t led_effects_start_effect(const led_effect_config_t *config)
     if (!g_led_mgr.initialized || !config) {
         return RT_NULL;
     }
-    
+    if (!g_led_mgr.started) {
+        return 0;
+    }     
     int effect_id = -1;
     rt_sem_t done_sem = rt_sem_create("led_sync", 0, RT_IPC_FLAG_PRIO);
     if (!done_sem) {
@@ -650,7 +687,7 @@ led_effect_handle_t led_effects_start_effect(const led_effect_config_t *config)
     };
     
     if (led_send_message(&msg, true) == 0) {
-        // 等待处理完成
+
         rt_sem_take(done_sem, 1000);
     }
     
@@ -710,14 +747,14 @@ static int apply_effect_flowing(const led_effect_handle_internal_t *effect, uint
     int active_led = (int)(progress * effect->config.led_count);
     uint32_t color = led_effects_apply_brightness(effect->config.colors[0], effect->config.brightness);
 
-    // 清除范围内的LED
+
     for (int i = effect->config.led_start; i < effect->config.led_start + effect->config.led_count; i++) {
         if (i < (int)g_led_mgr.actual_led_count) {
             buffer[i] = RGB_COLOR_BLACK;
         }
     }
 
-    // 点亮当前LED
+
     int led_index = effect->config.led_start + active_led;
     if (led_index < (int)g_led_mgr.actual_led_count && led_index >= effect->config.led_start) {
         buffer[led_index] = color;
@@ -749,7 +786,9 @@ int led_effects_stop_effect(led_effect_handle_t handle)
     if (!g_led_mgr.initialized || !handle) {
         return -RT_EINVAL;
     }
-    
+    if (!g_led_mgr.started) {
+        return 0;
+    }     
     int effect_id = (int)(uintptr_t)handle;
     
     led_message_t msg = {
@@ -764,7 +803,7 @@ int led_effects_stop_effect(led_effect_handle_t handle)
 
 int led_effects_stop_all_effects(void)
 {
-    // 停止所有效果的简单实现
+
     for (int i = 1; i <= 10; i++) {
         led_effects_stop_effect((led_effect_handle_t)(uintptr_t)i);
     }
