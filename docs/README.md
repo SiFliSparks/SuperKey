@@ -45,9 +45,9 @@ pnpm docs:dev
 
   vite v6.3.5 dev server running at:
 
-  ➜  Local:   http://localhost:8080/projects/xiaozhi/
-  ➜  Network: http://192.168.1.216:8080/projects/xiaozhi/
-  ➜  Network: http://169.254.199.230:8080/projects/xiaozhi/
+  ➜  Local:   http://localhost:8080/projects/superkey/
+  ➜  Network: http://192.168.1.216:8080/projects/superkey/
+  ➜  Network: http://169.254.199.230:8080/projects/superkey/
 ```
 
 在浏览器中打开`Local`地址即可预览结果。
