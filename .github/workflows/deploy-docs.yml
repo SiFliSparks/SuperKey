@@ -71,4 +71,4 @@ jobs:
           export TENCENTCLOUD_SECRET_ID=${{ secrets.COS_DOCS_SECRET_ID }}
           export TENCENTCLOUD_SECRET_KEY=${{ secrets.COS_DOCS_SECRET_KEY }}
           export TENCENTCLOUD_REGION=${{ secrets.COS_DOCS_REGION }}
-          tccli cdn PurgePathCache --cli-unfold-argument --Paths 'https://docs.sifli.com/projects/superkey/' --FlushType flush
+          tccli cdn PurgePathCache --cli-unfold-argument --Paths 'https://sparks.sifli.com/projects/superkey/' --FlushType flush
