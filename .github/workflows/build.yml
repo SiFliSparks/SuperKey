@@ -30,7 +30,7 @@ jobs:
     
     - name: Setup build environment
       run: |
-        cd SIFLI-SDK
+        cd SiFli-SDK
         ./install.sh
     
     - name: Build ${{ matrix.target }}
