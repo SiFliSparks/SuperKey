@@ -55,12 +55,11 @@ jobs:
 
       - name: Configure COSCMD
         run: |
-          coscmd config -a ${{ secrets.COS_DOCS_SECRET_ID }} -s ${{ secrets.COS_DOCS_SECRET_KEY }} -b ${{ secrets.COS_DOCS_BUCKET }} -r ${{ secrets.COS_DOCS_REGION }}
+          coscmd config -a ${{ secrets.COS_DOCS_SECRET_ID }} -s ${{ secrets.COS_DOCS_SECRET_KEY }} -b ${{ secrets.COS_DOCS_BUCKET }} -e ${{ secrets.COS_DOCS_ENDPOINT }}
 
       - name: Upload to COS
         run: |
           coscmd upload -rs --delete --yes ./docs/src/.vuepress/dist/ /projects/superkey/
-          echo "Uploaded documentation for docs to COS successfully."
       
       - name: Install TCCLI
         run: |
