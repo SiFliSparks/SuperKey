@@ -35,7 +35,7 @@ jobs:
     
     - name: Build ${{ matrix.target }}
       run: |
-        cd sdk
+        cd SiFli-SDK
         . ./export.sh
         cd -
         cd app/project
