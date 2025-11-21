@@ -39,7 +39,7 @@ jobs:
         . ./export.sh
         cd -
         cd app/project
-        scons --board=sf32lb52-superkey --board_search_path="..\boards" -j$(nproc)
+        scons --board=sf32lb52-superkey --board_search_path="../boards" -j$(nproc)
     
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
