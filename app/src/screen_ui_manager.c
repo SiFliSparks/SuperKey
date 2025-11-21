@@ -1501,6 +1501,22 @@ int screen_ui_build_group1(void)
     /* 激活按键上下文 */
     screen_context_activate_for_group(SCREEN_GROUP_1);
     
+    weather_data_t weather = {0};
+    if (data_manager_get_weather(&weather) == 0 && weather.valid) {
+        screen_ui_update_weather_display(&weather);
+    }
+    
+    stock_data_t stock = {0};
+    if (data_manager_get_stock(&stock) == 0 && stock.valid) {
+        screen_ui_update_stock_display(&stock);
+    }
+    
+    // 立即更新时间显示
+    screen_ui_update_time_display();
+    
+    // 立即更新传感器数据
+    screen_ui_update_sensor_display();
+    
     lv_obj_invalidate(lv_scr_act());
     
     return 0;
