@@ -170,26 +170,19 @@ int main(void)
 
     ret = system_init_stage(1, "Display System", init_display_system);
     
-
     ret = system_init_stage(2, "Data Pool", init_data_pool);
     
-
     ret = system_init_stage(3, "Event Bus", event_bus_init);
     
+    ret = system_init_stage(4, "HID & App Controller", app_controller_init);
 
-    ret = system_init_stage(4, "LED Effects Manager (Init)",  led_effects_manager_init);
+    ret = system_init_stage(5, "LED Effects Manager (Init)",  led_effects_manager_init);
     
-
-    ret = system_init_stage(5, "Data Manager", data_manager_init);
+    ret = system_init_stage(6, "Data Manager", data_manager_init);
     
+    ret = system_init_stage(7, "Serial Data Handler", serial_data_handler_init);
 
-    ret = system_init_stage(6, "Serial Data Handler", serial_data_handler_init);
-
-
-    ret = system_init_stage(7, "HID & App Controller", app_controller_init);
-
-    rt_thread_mdelay(500);
-
+    //ret = system_init_stage(7, "HID & App Controller", app_controller_init);
 
     ret = system_init_stage(8, "LED Effects Manager (Start)",  led_effects_manager_start); 
 
@@ -198,7 +191,8 @@ int main(void)
     
 
     ret = system_init_stage(10, "Screen System", init_screen_system);
-        
+
+
     g_system_state.system_ready = true;
     g_system_state.last_health_check = rt_tick_get();
 

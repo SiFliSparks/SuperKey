@@ -107,10 +107,6 @@ int data_manager_get_weather(weather_data_t *data)
     
     rt_mutex_take(g_data_store.lock, RT_WAITING_FOREVER);
     
-    if (is_data_expired(g_data_store.weather_update_tick)) {
-        g_data_store.weather.valid = false;
-    }
-    
     *data = g_data_store.weather;
     rt_mutex_release(g_data_store.lock);
     
@@ -125,10 +121,6 @@ int data_manager_get_forecast(weather_forecast_data_t *data)
     
     rt_mutex_take(g_data_store.lock, RT_WAITING_FOREVER);
     
-    if (is_data_expired(g_data_store.forecast_update_tick)) {
-        g_data_store.forecast.valid = false;
-    }
-    
     *data = g_data_store.forecast;
     rt_mutex_release(g_data_store.lock);
     
@@ -142,10 +134,6 @@ int data_manager_get_stock(stock_data_t *data)
     }
     
     rt_mutex_take(g_data_store.lock, RT_WAITING_FOREVER);
-    
-    if (is_data_expired(g_data_store.stock_update_tick)) {
-        g_data_store.stock.valid = false;
-    }
     
     *data = g_data_store.stock;
     rt_mutex_release(g_data_store.lock);
@@ -181,21 +169,6 @@ int data_manager_cleanup_expired_data(void)
     
     int cleaned = 0;
     rt_tick_t now = rt_tick_get();
-    
-    if (is_data_expired(g_data_store.weather_update_tick) && g_data_store.weather.valid) {
-        g_data_store.weather.valid = false;
-        cleaned++;
-    }
-    
-    if (is_data_expired(g_data_store.stock_update_tick) && g_data_store.stock.valid) {
-        g_data_store.stock.valid = false;
-        cleaned++;
-    }
-    
-    if (is_data_expired(g_data_store.system_update_tick) && g_data_store.system.valid) {
-        g_data_store.system.valid = false;
-        cleaned++;
-    }
     
     if (cleaned > 0) {
         g_data_store.cleanup_count += cleaned;

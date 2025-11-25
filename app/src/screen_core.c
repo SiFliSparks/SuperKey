@@ -8,7 +8,7 @@
 #include "screen_context.h"
 
 #define MESSAGE_QUEUE_SIZE 32
-#define MESSAGE_TIMEOUT_MS 100
+#define MESSAGE_TIMEOUT_MS 1// 消息接收超时,刷新率取决于此
 
 /* 静态核心管理器实例 */
 static screen_core_t g_core = {0};
@@ -287,25 +287,34 @@ int screen_core_process_messages(void)
 /* 消息处理函数实现 */
 static int process_update_time_message(void)
 {
-    // L1层级: 只在Group1更新时间
-    if (g_core.current_level == SCREEN_LEVEL_1) {
-        if (g_core.current_group == SCREEN_GROUP_1) {
+    screen_level_t current_level;
+    screen_l2_group_t l2_group;
+    
+    rt_mutex_take(g_core.state_lock, RT_WAITING_FOREVER);
+    current_level = g_core.current_level;
+    l2_group = g_core.l2_current_group;
+    screen_group_t current_group = g_core.current_group;
+    rt_mutex_release(g_core.state_lock);
+    
+    if (current_level == SCREEN_LEVEL_1) {
+        if (current_group == SCREEN_GROUP_1) {
             return screen_ui_update_time_display();
         }
-        return 0;  // 其他Group不需要时间更新
+        return 0;
     }
     
-    // L2层级 - 时间详情页、木鱼页和番茄钟页都需要更新
-    if (g_core.current_level == SCREEN_LEVEL_2) {
-        if (g_core.l2_current_group == SCREEN_L2_TIME_GROUP || 
-            g_core.l2_current_group == SCREEN_L2_MUYU_GROUP ||
-            g_core.l2_current_group == SCREEN_L2_TOMATO_GROUP) {  // 新增番茄钟判断
+    if (current_level == SCREEN_LEVEL_2) {
+        if (l2_group == SCREEN_L2_TIME_GROUP || 
+            l2_group == SCREEN_L2_MUYU_GROUP ||
+            l2_group == SCREEN_L2_TOMATO_GROUP) {
             return screen_ui_update_time_display();
         }
-        if (g_core.l2_current_group == SCREEN_L2_STOPWATCH_GROUP) {
+        
+        if (l2_group == SCREEN_L2_STOPWATCH_GROUP) {
             return screen_ui_update_stopwatch_display();
         }
-        return 0;  // 其他L2页面不需要时间更新
+        
+        return 0;
     }
     
     return 0;
@@ -467,7 +476,11 @@ static int process_switch_group_message(const screen_switch_msg_t *msg)
     g_core.switching_in_progress = true;
     rt_mutex_release(g_core.state_lock);
     /* 停止当前组的定时器 */
-    screen_timer_stop_all_group_timers();
+    /* 切换组时不停止CLOCK，只停止其他定时器 */
+    screen_timer_stop(SCREEN_TIMER_WEATHER);
+    screen_timer_stop(SCREEN_TIMER_STOCK);
+    screen_timer_stop(SCREEN_TIMER_SENSOR);
+    screen_timer_stop(SCREEN_TIMER_SYSTEM);
     
     /* 执行UI切换 - 这里才是真正的LVGL操作 */
     int ret = screen_ui_switch_to_group(msg->target_group);
@@ -481,9 +494,13 @@ static int process_switch_group_message(const screen_switch_msg_t *msg)
         
         /* 启动新组的定时器 */
         if (msg->target_group == SCREEN_GROUP_1) {
-            screen_timer_start_group1_timers();
-            
-            // ✅ 回到Group1时,如果番茄钟在运行,启动后台显示
+            /* CLOCK已在运行，只启动其他定时器 */
+            screen_timer_start(SCREEN_TIMER_WEATHER);
+            screen_timer_start(SCREEN_TIMER_STOCK);
+            screen_timer_start(SCREEN_TIMER_SENSOR);
+            screen_core_post_update_weather(NULL);  // 立即请求天气更新
+            screen_core_post_update_stock(NULL);     // 立即请求股票更新    
+            // 回到Group1时,如果番茄钟在运行,启动后台显示
             tomato_data_t tomato_data;
             if (screen_context_get_tomato_data(&tomato_data) == 0 &&
                 tomato_data.current_state == TOMATO_STATE_RUNNING) {
@@ -491,6 +508,7 @@ static int process_switch_group_message(const screen_switch_msg_t *msg)
             }
         } else if (msg->target_group == SCREEN_GROUP_2) {
             screen_timer_start_group2_timers();
+            screen_core_post_update_system(NULL);
         }
     } 
     
@@ -507,7 +525,11 @@ static int process_enter_l2_message(const screen_l2_enter_msg_t *msg)
         return -RT_EINVAL;
     }
     
-    screen_timer_stop_all_group_timers();
+    /* 保持CLOCK运行，只停止其他定时器 */
+    screen_timer_stop(SCREEN_TIMER_WEATHER);
+    screen_timer_stop(SCREEN_TIMER_STOCK);
+    screen_timer_stop(SCREEN_TIMER_SENSOR);
+    screen_timer_stop(SCREEN_TIMER_SYSTEM);
     
     int ret = screen_ui_switch_to_l2(msg->l2_group, msg->l2_page);
     
@@ -517,27 +539,28 @@ static int process_enter_l2_message(const screen_l2_enter_msg_t *msg)
         g_core.l2_current_group = msg->l2_group;
         g_core.l2_current_page = msg->l2_page;
         rt_mutex_release(g_core.state_lock);
+        
         screen_context_activate_for_level2(msg->l2_group);
-        // 启动对应的定时器
+        
         if (msg->l2_group == SCREEN_L2_TIME_GROUP) {
-            screen_timer_start_l2_timers();
+            /* L2时间页不需要重新启动CLOCK，它已经在运行 */
+            /* screen_timer_start_l2_timers(); */
         }
-        // 木鱼页面启动木鱼定时器
         else if (msg->l2_group == SCREEN_L2_MUYU_GROUP) {
             screen_timer_start_l2_muyu_timers();
         }
-        // 番茄钟页面启动时钟定时器
         else if (msg->l2_group == SCREEN_L2_TOMATO_GROUP) {
-            screen_timer_start(SCREEN_TIMER_CLOCK);  // 启动1秒时钟更新
+            /* 番茄钟定时器始终运行，无需重新启动 */
+            /* screen_timer_start(SCREEN_TIMER_TOMATO); */
         }
-        // 秒表页面启动秒表定时器
         else if (msg->l2_group == SCREEN_L2_STOPWATCH_GROUP) {
-            screen_timer_start(SCREEN_TIMER_STOPWATCH);  // 启动秒表定时器
+            screen_timer_start(SCREEN_TIMER_STOPWATCH);
         }
     }
     
     return ret;
 }
+
 static int process_update_forecast_message(const weather_forecast_data_t *data)
 {
     /* 只在L2天气预报页面时更新 */
@@ -591,37 +614,28 @@ static int process_return_l1_message(void)
         rt_mutex_take(g_core.state_lock, RT_WAITING_FOREVER);
         g_core.current_level = SCREEN_LEVEL_1;
         rt_mutex_release(g_core.state_lock);
+        
         screen_context_deactivate_level2();
         screen_context_activate_for_group(l1_group);
-        // 停止L2专用定时器
-        if (previous_l2_group == SCREEN_L2_TIME_GROUP) {
-            screen_timer_stop(SCREEN_TIMER_CLOCK);
-        }
-        // 停止木鱼定时器
-        else if (previous_l2_group == SCREEN_L2_MUYU_GROUP) {
+        
+        if (previous_l2_group == SCREEN_L2_MUYU_GROUP) {
             screen_timer_stop(SCREEN_TIMER_MUYU);
         }
-        // 停止番茄钟定时器
-        else if (previous_l2_group == SCREEN_L2_TOMATO_GROUP) {
-            screen_timer_stop(SCREEN_TIMER_CLOCK);
-            // ✅ 如果番茄钟在运行且返回Group1,启动后台显示
-            if (l1_group == SCREEN_GROUP_1) {
-                tomato_data_t tomato_data;
-                if (screen_context_get_tomato_data(&tomato_data) == 0 &&
-                    tomato_data.current_state == TOMATO_STATE_RUNNING) {
-                    screen_ui_start_tomato_background_display();
-                }
-            }
-        }
-        // 停止秒表定时器
         else if (previous_l2_group == SCREEN_L2_STOPWATCH_GROUP) {
-            screen_timer_stop(SCREEN_TIMER_CLOCK);
+            screen_timer_stop(SCREEN_TIMER_STOPWATCH);
         }
-        // 重启对应组的定时器
+        
         if (l1_group == SCREEN_GROUP_1) {
-            screen_timer_start_group1_timers();
+            /* CLOCK定时器已在运行，启动其他定时器 */
+            screen_timer_start(SCREEN_TIMER_WEATHER);
+            screen_timer_start(SCREEN_TIMER_STOCK);
+            screen_timer_start(SCREEN_TIMER_SENSOR);
+            screen_core_post_update_time();
+            screen_core_post_update_weather(NULL);
+            screen_core_post_update_stock(NULL);
         } else if (l1_group == SCREEN_GROUP_2) {
             screen_timer_start_group2_timers();
+            screen_core_post_update_system(NULL);
         }
     }
     

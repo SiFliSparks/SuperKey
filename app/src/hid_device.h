@@ -23,6 +23,8 @@
 #define CC_VOL_UP      (1u << 0)
 #define CC_VOL_DOWN    (1u << 1)
 #define CC_PLAY_PAUSE  (1u << 2)
+#define CC_SCAN_NEXT   (1u << 3)
+#define CC_SCAN_PREV   (1u << 4)
 
 #ifdef __cplusplus
 extern "C" {

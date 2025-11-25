@@ -8,15 +8,25 @@
 extern "C" {
 #endif
 
-/* UI组件句柄结构 */
 typedef struct {
-    /* 基础面板 */
-    lv_obj_t *root;
-    lv_obj_t *left_panel;
-    lv_obj_t *middle_panel; 
-    lv_obj_t *right_panel;
+    lv_obj_t *screen_group1;
+    lv_obj_t *screen_group2;
+    lv_obj_t *screen_group3;
+    lv_obj_t *screen_group4;
     
-    /* Group 1 组件 */
+    lv_obj_t *screen_l2_time_detail;
+    lv_obj_t *screen_l2_weather_forecast;
+    lv_obj_t *screen_l2_muyu;
+    lv_obj_t *screen_l2_tomato;
+    lv_obj_t *screen_l2_stopwatch;
+    lv_obj_t *screen_l2_media;
+    lv_obj_t *screen_l2_web;
+    lv_obj_t *screen_l2_shortcut;
+    
+    lv_obj_t *g1_left_panel;
+    lv_obj_t *g1_middle_panel;
+    lv_obj_t *g1_right_panel;
+    
     struct {
         lv_obj_t *time_label;
         lv_obj_t *date_label;
@@ -41,7 +51,10 @@ typedef struct {
         lv_obj_t *update_time_label;
     } group1_stock;
     
-    /* Group 2 组件 */
+    lv_obj_t *g2_left_panel;
+    lv_obj_t *g2_middle_panel;
+    lv_obj_t *g2_right_panel;
+    
     struct {
         lv_obj_t *cpu_title;
         lv_obj_t *cpu_usage;
@@ -66,7 +79,14 @@ typedef struct {
         lv_obj_t *net_status;
     } group2_network;
     
-    /* Group 4 实用工具组件 - 新增 */
+    lv_obj_t *g3_left_panel;
+    lv_obj_t *g3_middle_panel;
+    lv_obj_t *g3_right_panel;
+    
+    lv_obj_t *g4_left_panel;
+    lv_obj_t *g4_middle_panel;
+    lv_obj_t *g4_right_panel;
+    
     struct {
         lv_obj_t *muyu_title;
         lv_obj_t *muyu_icon;
@@ -85,66 +105,63 @@ typedef struct {
         lv_obj_t *stopwatch_hint;
     } group4_stopwatch;
     
-    /* L2数字时钟组件 */
     struct {
-        lv_obj_t *hour_tens;    // 小时十位数字图片
-        lv_obj_t *hour_units;   // 小时个位数字图片
-        lv_obj_t *min_tens;     // 分钟十位数字图片
-        lv_obj_t *min_units;    // 分钟个位数字图片
-        lv_obj_t *sec_tens;     // 秒钟十位数字图片
-        lv_obj_t *sec_units;    // 秒钟个位数字图片
+        lv_obj_t *hour_tens;
+        lv_obj_t *hour_units;
+        lv_obj_t *min_tens;
+        lv_obj_t *min_units;
+        lv_obj_t *sec_tens;
+        lv_obj_t *sec_units;
     } l2_digital_clock;
     
-    /* L2赛博木鱼组件 - 新增 */
     struct {
-        lv_obj_t *muyu_image;       // 木鱼图片（可点击）
-        lv_obj_t *counter_label;    // 计数器显示
-        lv_obj_t *total_label;      // 总计数显示
-        lv_obj_t *merit_label;      // 功德提示
-        lv_obj_t *reset_hint;       // 重置提示
+        lv_obj_t *muyu_image;
+        lv_obj_t *counter_label;
+        lv_obj_t *total_label;
+        lv_obj_t *merit_label;
+        lv_obj_t *reset_hint;
     } l2_muyu_main;
-    /* L2天气预报组件 - 新增 */
+    
     struct {
-        /* 今天（左屏） */
         lv_obj_t *day0_title;
         lv_obj_t *day0_weather;
         lv_obj_t *day0_temp_max;
         lv_obj_t *day0_temp_min;
-        lv_obj_t *day0_wind_dir;      // 注意：是 wind_dir
-        lv_obj_t *day0_wind_scale;    // 注意：是 wind_scale
+        lv_obj_t *day0_wind_dir;
+        lv_obj_t *day0_wind_scale;
         
-        /* 明天（中屏） */
         lv_obj_t *day1_title;
         lv_obj_t *day1_weather;
         lv_obj_t *day1_temp_max;
         lv_obj_t *day1_temp_min;
-        lv_obj_t *day1_wind_dir;      // 注意：是 wind_dir
-        lv_obj_t *day1_wind_scale;    // 注意：是 wind_scale
+        lv_obj_t *day1_wind_dir;
+        lv_obj_t *day1_wind_scale;
         
-        /* 后天（右屏） */
         lv_obj_t *day2_title;
         lv_obj_t *day2_weather;
         lv_obj_t *day2_temp_max;
         lv_obj_t *day2_temp_min;
-        lv_obj_t *day2_wind_dir;      // 注意：是 wind_dir
-        lv_obj_t *day2_wind_scale;    // 注意：是 wind_scale
+        lv_obj_t *day2_wind_dir;
+        lv_obj_t *day2_wind_scale;
         
         lv_obj_t *update_time;
     } l2_weather_forecast;
+    
     struct {
-        lv_obj_t *mode_label;        // 模式显示(专注/短休息/长休息)
-        lv_obj_t *timer_label;       // 倒计时显示(MM:SS)
-        lv_obj_t *progress_bar;      // 进度条
-        lv_obj_t *state_label;       // 状态提示
-        lv_obj_t *stats_label;       // 统计信息
-        lv_obj_t *round_label;       // 轮次显示
+        lv_obj_t *mode_label;
+        lv_obj_t *timer_label;
+        lv_obj_t *progress_bar;
+        lv_obj_t *state_label;
+        lv_obj_t *stats_label;
+        lv_obj_t *round_label;
     } l2_tomato_timer;
+    
     struct {
-        lv_obj_t *time_label;        // 计时显示(MM:SS.d)
-        lv_obj_t *state_label;       // 状态提示
-        lv_obj_t *hint_label;        // 操作提示
+        lv_obj_t *time_label;
+        lv_obj_t *state_label;
+        lv_obj_t *hint_label;
     } l2_stopwatch_timer;
-    /* 字体和样式 */
+    
     lv_font_t *font_xsmall;
     lv_font_t *font_small;
     lv_font_t *font_medium;
@@ -165,8 +182,23 @@ typedef struct {
     screen_ui_handles_t handles;
     screen_group_t current_group;
     screen_level_t current_level;
+    screen_l2_group_t current_l2_group;
     bool initialized;
     float scale_factor;
+    
+    bool group1_built;
+    bool group2_built;
+    bool group3_built;
+    bool group4_built;
+    
+    bool l2_time_built;
+    bool l2_weather_built;
+    bool l2_muyu_built;
+    bool l2_tomato_built;
+    bool l2_stopwatch_built;
+    bool l2_media_built;
+    bool l2_web_built;
+    bool l2_shortcut_built;
 
     muyu_data_t muyu_data;
 } screen_ui_manager_t;
@@ -175,73 +207,47 @@ int screen_ui_manager_init(void);
 int screen_ui_manager_deinit(void);
 
 int screen_ui_build_group1(void);
-
 int screen_ui_build_group2(void); 
-
 int screen_ui_build_group3(void);
-
 int screen_ui_build_group4(void);
 
 int screen_ui_build_l2_weather(void);
-
 int screen_ui_build_l2_time(void);
-
 int screen_ui_build_l2_media(void);
-
 int screen_ui_build_l2_web(void);
-
 int screen_ui_build_l2_shortcut(void);
-
 int screen_ui_build_l2_muyu(void);
-
 int screen_ui_build_l2_tomato(void);
-
 int screen_ui_build_l2_stopwatch(void);
 
 int screen_ui_switch_to_group(screen_group_t target_group);
-
 int screen_ui_switch_to_l2(screen_l2_group_t l2_group, screen_l2_page_t l2_page);
-
 int screen_ui_return_to_l1(screen_group_t l1_group);
 
 int screen_ui_update_time_display(void);
-
 int screen_ui_update_tomato_display(void);
-
 int screen_ui_update_weather_display(const weather_data_t *data);
-
 int screen_ui_update_l2_weather_forecast(const weather_forecast_data_t *forecast);
-
 int screen_ui_update_stock_display(const stock_data_t *data);
-
 int screen_ui_update_system_display(const system_monitor_data_t *data);
-
 int screen_ui_update_sensor_display(void);
-
 int screen_ui_update_muyu_display(void);
+int screen_ui_update_stopwatch_display(void);
 
 int screen_ui_cleanup_current_group(void);
-
 int screen_ui_cleanup_all(void);
 
 screen_group_t screen_ui_get_current_group(void);
-
 bool screen_ui_is_initialized(void);
 
 const muyu_data_t* screen_ui_get_muyu_data(void);
-
 int screen_ui_reset_muyu_counter(void);
 
 int screen_ui_start_tomato_background_display(void);
-
 int screen_ui_stop_tomato_background_display(void);
-
-int screen_ui_build_l2_stopwatch(void);
-
-int screen_ui_update_stopwatch_display(void);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* SCREEN_UI_MANAGER_H */
+#endif

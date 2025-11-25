@@ -8,7 +8,8 @@
 #include "screen_ui_manager.h"
 #include <time.h>
 #include <string.h>
-#include "screen_core.h" 
+#include "screen_core.h"
+#include "encoder_controller.h"
 
 static rt_tick_t last_muyu_tap_time = 0;
 
@@ -29,6 +30,11 @@ static int screen_l2_muyu_key_handler(int key_idx, button_action_t action, void 
 static int screen_l2_weather_key_handler(int key_idx, button_action_t action, void *user_data);
 static int screen_l2_tomato_key_handler(int key_idx, button_action_t action, void *user_data);
 static int screen_l2_stopwatch_key_handler(int key_idx, button_action_t action, void *user_data);
+
+/* Encoder事件处理相关 */
+static int l2_media_encoder_event_handler(const event_t *event, void *user_data);
+static bool g_encoder_subscribed = false;
+
 /* 全局蓝色呼吸灯效果句柄 - 用于恢复背景特效 */
 static led_effect_handle_t g_background_breathing_effect = NULL;
 
@@ -168,8 +174,8 @@ static const key_led_binding_t group3_led_bindings[] = {
 };
 
 static const key_led_binding_t l2_media_led_bindings[] = {
-    {0, 2, 0x00FF80},   // 音量+ -> LED2: 绿色呼吸
-    {1, 1, 0xFF8000},   // 音量- -> LED1: 橙色呼吸
+    {0, 2, 0x00FF80},   // 上一曲 -> LED2: 绿色呼吸
+    {1, 1, 0xFF8000},   // 下一曲 -> LED1: 橙色呼吸
     {2, 0, 0xFF00FF},   // 播放/暂停 -> LED0: 紫色呼吸
     {3, 1, 0xFFFFFF},   // 返回 -> LED1: 白色呼吸
 };
@@ -420,26 +426,67 @@ static int screen_l2_media_key_handler(int key_idx, button_action_t action, void
     
     switch (key_idx) {
         case 0:
+            // 上一曲
             if (hid_ready) {
-                hid_consumer_click(CC_VOL_UP);
+                hid_consumer_click(CC_SCAN_PREV);
             }
             break;
             
         case 1:
+            // 下一曲
             if (hid_ready) {
-                hid_consumer_click(CC_VOL_DOWN);
+                hid_consumer_click(CC_SCAN_NEXT);
             }
             break;
             
         case 2:
+            // 播放/暂停
             if (hid_ready) {
                 hid_consumer_click(CC_PLAY_PAUSE);
             }
             break;
             
         case 3:
+            // 返回L1
             screen_return_to_level1();
             break;
+    }
+    
+    return 0;
+}
+
+/* L2媒体控制encoder事件处理函数 - 用于音量控制 */
+static int l2_media_encoder_event_handler(const event_t *event, void *user_data)
+{
+    (void)user_data;
+    
+    if (!event || event->type != EVENT_ENCODER_ROTATED) {
+        return 0;
+    }
+    
+    if (!hid_device_ready()) {
+        return 0;
+    }
+    
+    // 直接访问union中的encoder数据
+    int32_t delta = event->data.encoder.delta;
+    
+    // 根据旋转方向发送音量控制指令
+    // delta > 0: 顺时针旋转 -> 音量+
+    // delta < 0: 逆时针旋转 -> 音量-
+    if (delta > 0) {
+        // 顺时针 - 音量+
+        for (int i = 0; i < delta && i < 3; i++) {
+            hid_consumer_click(CC_VOL_UP);
+            rt_thread_mdelay(20);  // 短暂延迟避免命令冲突
+        }
+    } else if (delta < 0) {
+        // 逆时针 - 音量-
+        int abs_delta = -delta;
+        for (int i = 0; i < abs_delta && i < 3; i++) {
+            hid_consumer_click(CC_VOL_DOWN);
+            rt_thread_mdelay(20);
+        }
     }
     
     return 0;
@@ -722,6 +769,20 @@ int screen_context_activate_for_level2(screen_l2_group_t l2_group)
             
             ret = key_manager_activate_context(KEY_CTX_L2_MEDIA);
             if (ret == 0) {
+                // 设置encoder为音量控制模式
+                encoder_controller_set_mode(ENCODER_MODE_VOLUME);
+                
+                // 订阅encoder事件
+                event_bus_subscribe(
+                    EVENT_ENCODER_ROTATED,
+                    l2_media_encoder_event_handler,
+                    NULL,
+                    EVENT_PRIORITY_HIGH
+                );
+                g_encoder_subscribed = true;
+                
+                // 启动encoder polling
+                encoder_controller_start_polling();
             }
             break;
             
@@ -809,6 +870,17 @@ int screen_context_activate_for_level2(screen_l2_group_t l2_group)
 
 int screen_context_deactivate_level2(void)
 {
+    // 停止L2的encoder订阅
+    if (g_encoder_subscribed) {
+        event_bus_unsubscribe(EVENT_ENCODER_ROTATED, l2_media_encoder_event_handler);
+        g_encoder_subscribed = false;
+    }
+    
+    // 恢复encoder到L1的屏幕切换模式
+    encoder_controller_set_mode(ENCODER_MODE_SCREEN_SWITCH);
+    // 确保encoder polling保持运行状态（L1需要用它切换页面）
+    encoder_controller_start_polling();
+    
     key_manager_deactivate_context(KEY_CTX_L2_TIME);
     key_manager_deactivate_context(KEY_CTX_L2_MEDIA);
     key_manager_deactivate_context(KEY_CTX_L2_WEB);
@@ -1070,26 +1142,25 @@ void screen_context_init_tomato_data(void)
     }
 }
 
-// 4. 番茄钟倒计时回调函数
-
-
-
-// 导出倒计时处理函数供UI层调用
 void tomato_process_countdown(void)
 {
     if (!g_tomato_lock) return;
     
     rt_mutex_take(g_tomato_lock, RT_WAITING_FOREVER);
     
-    // ✅ 只有RUNNING状态才执行倒计时
+    // 只有RUNNING状态才执行倒计时
     if (g_tomato_data.current_state == TOMATO_STATE_RUNNING) {
         rt_tick_t current_tick = rt_tick_get();
         rt_tick_t elapsed_ticks = current_tick - g_tomato_data.last_update_tick;
         
-        // ✅ 防抖: 确保至少过了900ms才执行一次减法
-        if (elapsed_ticks >= rt_tick_from_millisecond(900)) {
-            if (g_tomato_data.remaining_seconds > 0) {
-                g_tomato_data.remaining_seconds--;
+        // 【修复3: 改进时间精度计算】
+        // 计算已经过的完整秒数,避免累积误差
+        uint32_t elapsed_seconds = elapsed_ticks / RT_TICK_PER_SECOND;
+        
+        if (elapsed_seconds > 0) {
+            // 一次性减去所有已过的秒数
+            if (g_tomato_data.remaining_seconds >= elapsed_seconds) {
+                g_tomato_data.remaining_seconds -= elapsed_seconds;
                 
                 // 更新进度百分比
                 if (g_tomato_data.total_seconds > 0) {
@@ -1097,9 +1168,12 @@ void tomato_process_countdown(void)
                     g_tomato_data.progress_percent = (elapsed * 100) / g_tomato_data.total_seconds;
                 }
                 
-                g_tomato_data.last_update_tick = current_tick;
+                // 【关键】更新时间戳,只保留不足1秒的余数,避免时间漂移
+                g_tomato_data.last_update_tick = current_tick - (elapsed_ticks % RT_TICK_PER_SECOND);
+                
             } else {
                 // 倒计时完成
+                g_tomato_data.remaining_seconds = 0;
                 g_tomato_data.current_state = TOMATO_STATE_COMPLETED;
                 g_tomato_data.progress_percent = 100;
                 
@@ -1217,36 +1291,7 @@ int screen_context_handle_tomato_mode_switch(void)
 {
     if (!g_tomato_lock) return -RT_ERROR;
     
-    if (rt_interrupt_get_nest() > 0) {
-        if (g_tomato_data.current_state != TOMATO_STATE_IDLE) {
-            return -RT_ERROR;
-        }
-        
-        g_tomato_data.current_mode = (g_tomato_data.current_mode + 1) % TOMATO_MODE_MAX;
-        
-        switch (g_tomato_data.current_mode) {
-            case TOMATO_MODE_FOCUS:
-                g_tomato_data.total_seconds = g_tomato_data.focus_duration_min * 60;
-                break;
-            case TOMATO_MODE_SHORT_BREAK:
-                g_tomato_data.total_seconds = g_tomato_data.short_break_min * 60;
-                break;
-            case TOMATO_MODE_LONG_BREAK:
-                g_tomato_data.total_seconds = g_tomato_data.long_break_min * 60;
-                break;
-            default:
-                g_tomato_data.total_seconds = 25 * 60;
-                break;
-        }
-        
-        g_tomato_data.remaining_seconds = g_tomato_data.total_seconds;
-        g_tomato_data.progress_percent = 0;
-        g_tomato_data.last_update_tick = rt_tick_get();
-        
-        screen_core_post_update_time();
-        return 0;
-    }
-    
+    // ← 删除ISR检查,统一使用互斥锁
     rt_mutex_take(g_tomato_lock, RT_WAITING_FOREVER);
     
     if (g_tomato_data.current_state != TOMATO_STATE_IDLE) {
@@ -1276,10 +1321,10 @@ int screen_context_handle_tomato_mode_switch(void)
     g_tomato_data.last_update_tick = rt_tick_get();
     
     rt_mutex_release(g_tomato_lock);
+    
     screen_core_post_update_time();
     return 0;
 }
-
 // 完成确认(用于完成状态后进入下一模式)
 int screen_context_handle_tomato_complete(void)
 {
@@ -1411,7 +1456,7 @@ static int screen_l2_tomato_key_handler(int key_idx, button_action_t action, voi
     screen_context_get_tomato_data(&tomato_data);
     
     switch (key_idx) {
-        case 0:  // KEY1 - ✅ 改进: 待机=切换模式, 运行/暂停=停止重置, 完成=确认
+        case 0:  // KEY1 - 改进: 待机=切换模式, 运行/暂停=停止重置, 完成=确认
             if (tomato_data.current_state == TOMATO_STATE_IDLE) {
                 // 待机状态: 模式切换
                 screen_context_handle_tomato_mode_switch();
@@ -1420,7 +1465,7 @@ static int screen_l2_tomato_key_handler(int key_idx, button_action_t action, voi
                 // 完成状态: 确认完成,进入下一模式
                 screen_context_handle_tomato_complete();
             }
-            // ✅ 新增: 运行/暂停状态下,KEY1 = 停止并重置
+            // 新增: 运行/暂停状态下,KEY1 = 停止并重置
             else if (tomato_data.current_state == TOMATO_STATE_RUNNING ||
                      tomato_data.current_state == TOMATO_STATE_PAUSED) {
                 screen_context_handle_tomato_stop();

@@ -950,7 +950,7 @@ static void serial_rx_thread_entry(void *parameter)
                     consecutive_errors++;
                     
                     if (consecutive_errors > 50) {
-                        rt_thread_mdelay(1000);
+                        rt_thread_mdelay(100);
                         consecutive_errors = 0;
                     }
                     continue;
@@ -999,7 +999,7 @@ static void serial_rx_thread_entry(void *parameter)
 int serial_data_handler_init(void)
 {
     rt_thread_t thread;
-    
+    rt_thread_mdelay(100);
     serial_device = rt_device_find(SERIAL_DEVICE_NAME);
     if (!serial_device) {
         return -RT_ERROR;

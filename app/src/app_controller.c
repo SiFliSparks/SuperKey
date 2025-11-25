@@ -11,7 +11,7 @@
 #include "bf0_hal.h"
 #include "rtthread.h"
 
-
+#define USB_INIT_MAX_RETRIES 3
 
 static uintptr_t HAL_Get_USB_Base(void)
 {
@@ -27,6 +27,23 @@ static struct {
 
 static bool g_app_initialized = false;
 
+static int usb_wait_enumeration_complete(uint32_t timeout_ms)
+{
+    rt_tick_t start_tick = rt_tick_get();
+    rt_tick_t timeout_tick = rt_tick_from_millisecond(timeout_ms);
+    
+    while ((rt_tick_get() - start_tick) < timeout_tick) {
+        rt_thread_mdelay(50);
+    }
+    
+    return 0;
+}
+
+static void usb_hardware_reset(void)
+{
+    rt_thread_mdelay(100);
+}
+
 int app_controller_init(void)
 {
     if (g_app_initialized) {
@@ -37,10 +54,30 @@ int app_controller_init(void)
         return -1;
     }
 
-    hid_device_init(0, HAL_Get_USB_Base());
+    int retry_count = 0;
+    bool usb_init_success = false;
     
-    // 等待USB枚举稳定
-    rt_thread_mdelay(200);
+    while (retry_count < USB_INIT_MAX_RETRIES && !usb_init_success) {
+        usb_hardware_reset();
+        rt_thread_mdelay(100);
+        
+        hid_device_init(0, HAL_Get_USB_Base());
+        
+        if (usb_wait_enumeration_complete(1000) == 0) {
+            usb_init_success = true;
+            break;
+        }
+        
+        retry_count++;
+        
+        if (retry_count < USB_INIT_MAX_RETRIES) {
+            rt_thread_mdelay(500);
+        }
+    }
+    
+    if (!usb_init_success) {
+        return -1;
+    }
     
     if (key_manager_init() != 0) {
         return -1;
@@ -75,7 +112,6 @@ int app_controller_deinit(void)
 
     screen_context_deactivate_all();
     screen_context_deinit_all();
-
 
     key_manager_deinit();
 

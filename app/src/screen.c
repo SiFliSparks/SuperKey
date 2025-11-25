@@ -85,7 +85,7 @@ static int screen_data_event_handler(const event_t *event, void *user_data)
             screen_core_post_update_weather(NULL);
             break;
 
-        case EVENT_DATA_FORECAST_UPDATED:  // 新增：直接发消息
+        case EVENT_DATA_FORECAST_UPDATED:  // 直接发消息
             screen_core_post_update_forecast(&event->data.forecast.forecast);
             break;
 
@@ -168,7 +168,9 @@ void create_triple_screen_display(void)
         cleanup_triple_screen_display();
         return;
     }
+    screen_ui_switch_to_group(SCREEN_GROUP_1);
     screen_timer_start_group1_timers();
+    screen_timer_start(SCREEN_TIMER_TOMATO);  // 番茄钟定时器始终运行
     screen_context_activate_for_group(SCREEN_GROUP_1);
     g_screen_system_initialized = true;
     rt_tick_t init_time = rt_tick_get() - g_system_start_time;
@@ -493,4 +495,3 @@ int screen_enter_level2_auto(screen_group_t from_l1_group)
     
     return screen_enter_level2(l2_group, l2_page);
 }
-
