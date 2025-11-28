@@ -3,7 +3,7 @@
 - 本项目目前正在持续迭代，部分功能尚不完善。
 - 如果有任何想在此平台实现的功能，欢迎您对此项目提出issue，我们将听取您的意见，对项目进行功能改进和更新，也欢迎参与到项目共建中。
 - 项目Demo视频见[Bilibili_带屏多功能宏键盘](https://www.bilibili.com/video/BV1XLWGzPEb6) 视频内展示的固件版本为v1.0.0。 
-- 点此进入[项目文档](https://sparks.sifli.com/projects/superkey/get-started/hardware-assembly.html)
+- 点此进入[项目文档](https://sparks.sifli.com/projects/superkey/)
 ## 支持硬件
 - 本项目硬件已开源至立创开源硬件平台
 - [sf32-keyboard](https://oshwhub.com/sifli/sf32-keyboard)
