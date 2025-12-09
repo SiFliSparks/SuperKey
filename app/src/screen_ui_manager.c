@@ -152,12 +152,9 @@ extern const lv_image_dsc_t shortcut; // 快捷键图片
 extern const lv_image_dsc_t muyu;  // 木鱼图片资源
 extern const lv_image_dsc_t tomatolock;     // 番茄钟图片资源
 extern const lv_image_dsc_t calculagraph;   // 计时器图片资源
-<<<<<<< HEAD
 extern const lv_image_dsc_t custom1;    // 自定义1图片
 extern const lv_image_dsc_t custom2;    // 自定义2图片
 extern const lv_image_dsc_t custom3;    // 自定义3图片
-=======
->>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
 extern const lv_image_dsc_t pre_song;      // 上一曲图片
 extern const lv_image_dsc_t next_song;    // 下一曲图片
 extern const lv_image_dsc_t play;       // 播放/暂停图片
@@ -1501,10 +1498,7 @@ int screen_ui_manager_init(void)
     g_ui_mgr.handles.screen_group2 = lv_obj_create(NULL);
     g_ui_mgr.handles.screen_group3 = lv_obj_create(NULL);
     g_ui_mgr.handles.screen_group4 = lv_obj_create(NULL);
-<<<<<<< HEAD
     g_ui_mgr.handles.screen_group5 = lv_obj_create(NULL);
-=======
->>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
     
     g_ui_mgr.handles.screen_l2_time_detail = lv_obj_create(NULL);
     g_ui_mgr.handles.screen_l2_weather_forecast = lv_obj_create(NULL);
@@ -1516,11 +1510,7 @@ int screen_ui_manager_init(void)
     g_ui_mgr.handles.screen_l2_shortcut = lv_obj_create(NULL);
     
     if (!g_ui_mgr.handles.screen_group1 || !g_ui_mgr.handles.screen_group2 ||
-<<<<<<< HEAD
         !g_ui_mgr.handles.screen_group3 || !g_ui_mgr.handles.screen_group4 || !g_ui_mgr.handles.screen_group5) {
-=======
-        !g_ui_mgr.handles.screen_group3 || !g_ui_mgr.handles.screen_group4) {
->>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
         cleanup_fonts();
         return -RT_ERROR;
     }
@@ -1536,10 +1526,7 @@ int screen_ui_manager_init(void)
     setup_screen_base_style(g_ui_mgr.handles.screen_group1);
     setup_screen_base_style(g_ui_mgr.handles.screen_group2);
     setup_screen_base_style(g_ui_mgr.handles.screen_group3);
-<<<<<<< HEAD
     setup_screen_base_style(g_ui_mgr.handles.screen_group5);
-=======
->>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
     setup_screen_base_style(g_ui_mgr.handles.screen_group4);
     
     setup_screen_base_style(g_ui_mgr.handles.screen_l2_time_detail);
@@ -1557,10 +1544,7 @@ int screen_ui_manager_init(void)
     
     g_ui_mgr.group1_built = false;
     g_ui_mgr.group2_built = false;
-<<<<<<< HEAD
     g_ui_mgr.group5_built = false;
-=======
->>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
     g_ui_mgr.group3_built = false;
     g_ui_mgr.group4_built = false;
     
@@ -1688,7 +1672,6 @@ int screen_ui_build_group4(void)
     build_right_stopwatch_panel(g_ui_mgr.handles.g4_right_panel);
     
     g_ui_mgr.group4_built = true;
-<<<<<<< HEAD
     
     return 0;
 }
@@ -1712,8 +1695,6 @@ int screen_ui_build_group5(void)
     build_right_custom3_panel(g_ui_mgr.handles.g5_right_panel);
     
     g_ui_mgr.group5_built = true;
-=======
->>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
     
     return 0;
 }
@@ -2028,14 +2009,11 @@ int screen_ui_switch_to_group(screen_group_t target_group)
             screen_ui_build_group4();
             target_screen = g_ui_mgr.handles.screen_group4;
             break;
-<<<<<<< HEAD
         
         case SCREEN_GROUP_5:
             screen_ui_build_group5();
             target_screen = g_ui_mgr.handles.screen_group5;
             break;
-=======
->>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
             
         default:
             return -RT_EINVAL;
@@ -2116,11 +2094,7 @@ int screen_ui_switch_to_l2(screen_l2_group_t l2_group, screen_l2_page_t l2_page)
         return -RT_ERROR;
     }
     
-<<<<<<< HEAD
     load_screen_with_anim(target_screen, LV_SCR_LOAD_ANIM_MOVE_BOTTOM, 200);
-=======
-    load_screen_with_anim(target_screen, LV_SCR_LOAD_ANIM_MOVE_LEFT, 300);
->>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
     
     g_ui_mgr.current_level = SCREEN_LEVEL_2;
     g_ui_mgr.current_l2_group = l2_group;
@@ -2159,12 +2133,7 @@ int screen_ui_return_to_l1(screen_group_t l1_group)
         return -RT_ERROR;
     }
     
-<<<<<<< HEAD
     load_screen_with_anim(target_screen, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200);
-=======
-    load_screen_with_anim(target_screen, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 300);
->>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
-    
     g_ui_mgr.current_group = l1_group;
     g_ui_mgr.current_level = SCREEN_LEVEL_1;
     
@@ -2484,13 +2453,10 @@ int screen_ui_cleanup_all(void)
         lv_obj_del(g_ui_mgr.handles.screen_group4);
         g_ui_mgr.handles.screen_group4 = NULL;
     }
-<<<<<<< HEAD
     if (g_ui_mgr.handles.screen_group5) {
         lv_obj_del(g_ui_mgr.handles.screen_group5);
         g_ui_mgr.handles.screen_group5 = NULL;
     }
-=======
->>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
     
     if (g_ui_mgr.handles.screen_l2_time_detail) {
         lv_obj_del(g_ui_mgr.handles.screen_l2_time_detail);

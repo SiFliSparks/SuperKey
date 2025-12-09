@@ -10,10 +10,7 @@
 #include <string.h>
 #include "screen_core.h"
 #include "encoder_controller.h"
-<<<<<<< HEAD
 #include "custom_key_storage.h"
-=======
->>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
 
 static rt_tick_t last_muyu_tap_time = 0;
 

@@ -1008,11 +1008,7 @@ static void serial_rx_thread_entry(void *parameter)
 int serial_data_handler_init(void)
 {
     rt_thread_t thread;
-<<<<<<< HEAD
     custom_key_storage_init();
-=======
-    rt_thread_mdelay(100);
->>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
     serial_device = rt_device_find(SERIAL_DEVICE_NAME);
     if (!serial_device) {
         return -RT_ERROR;

@@ -180,11 +180,6 @@ int main(void)
     ret = system_init_stage(6, "Data Manager", data_manager_init);
     
     ret = system_init_stage(7, "Serial Data Handler", serial_data_handler_init);
-<<<<<<< HEAD
-=======
-
-    //ret = system_init_stage(7, "HID & App Controller", app_controller_init);
->>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
 
     ret = system_init_stage(8, "LED Effects Manager (Start)",  led_effects_manager_start); 
 
