@@ -13,6 +13,10 @@ typedef struct {
     lv_obj_t *screen_group2;
     lv_obj_t *screen_group3;
     lv_obj_t *screen_group4;
+<<<<<<< HEAD
+    lv_obj_t *screen_group5;
+=======
+>>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
     
     lv_obj_t *screen_l2_time_detail;
     lv_obj_t *screen_l2_weather_forecast;
@@ -87,6 +91,13 @@ typedef struct {
     lv_obj_t *g4_middle_panel;
     lv_obj_t *g4_right_panel;
     
+<<<<<<< HEAD
+    lv_obj_t *g5_left_panel;
+    lv_obj_t *g5_middle_panel;
+    lv_obj_t *g5_right_panel;
+    
+=======
+>>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
     struct {
         lv_obj_t *muyu_title;
         lv_obj_t *muyu_icon;
@@ -106,6 +117,24 @@ typedef struct {
     } group4_stopwatch;
     
     struct {
+<<<<<<< HEAD
+        lv_obj_t *custom1_icon;
+        lv_obj_t *custom1_hint;
+    } group5_custom1;
+    
+    struct {
+        lv_obj_t *custom2_icon;
+        lv_obj_t *custom2_hint;
+    } group5_custom2;
+    
+    struct {
+        lv_obj_t *custom3_icon;
+        lv_obj_t *custom3_hint;
+    } group5_custom3;
+    
+    struct {
+=======
+>>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
         lv_obj_t *hour_tens;
         lv_obj_t *hour_units;
         lv_obj_t *min_tens;
@@ -190,6 +219,10 @@ typedef struct {
     bool group2_built;
     bool group3_built;
     bool group4_built;
+<<<<<<< HEAD
+    bool group5_built;
+=======
+>>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
     
     bool l2_time_built;
     bool l2_weather_built;
@@ -209,6 +242,10 @@ int screen_ui_manager_deinit(void);
 int screen_ui_build_group1(void);
 int screen_ui_build_group2(void); 
 int screen_ui_build_group3(void);
+<<<<<<< HEAD
+int screen_ui_build_group5(void);
+=======
+>>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
 int screen_ui_build_group4(void);
 
 int screen_ui_build_l2_weather(void);

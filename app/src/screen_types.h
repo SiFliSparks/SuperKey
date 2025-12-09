@@ -16,12 +16,13 @@
 extern "C" {
 #endif
 
-/* 屏幕组定义 - 新增Group 4 */
+/* 屏幕组定义 - 新增Group 4和Group 5 */
 typedef enum {
     SCREEN_GROUP_1 = 0,  /* 第一组：时间/天气/股票 */
     SCREEN_GROUP_2,      /* 第二组：CPU-GPU/内存/网络 */
     SCREEN_GROUP_3,      /* 第三组：HID快捷键 */
     SCREEN_GROUP_4,      /* 第四组：实用工具（木鱼/番茄钟/秒表） */
+    SCREEN_GROUP_5,      /* 第五组：自定义按键（自定义1/自定义2/自定义3） */
     SCREEN_GROUP_MAX
 } screen_group_t;
 

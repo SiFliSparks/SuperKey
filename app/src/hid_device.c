@@ -233,7 +233,17 @@ void hid_kbd_send(uint8_t modifier, uint8_t keycode)
 {
     kbd_send_report(modifier, keycode);
 }
+/* 只发送按下报告，不自动释放 - 用于长按场景 */
+void hid_kbd_press(uint8_t modifier, uint8_t keycode)
+{
+    kbd_send_report(modifier, keycode);
+}
 
+/* 只发送释放报告 - 配合 hid_kbd_press 使用 */
+void hid_kbd_release(void)
+{
+    kbd_send_report(0, 0);
+}
 void hid_kbd_send_combo(uint8_t modifier, uint8_t keycode)
 {
     if (kbd_send_report(modifier, keycode) == 0) {

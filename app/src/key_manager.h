@@ -22,11 +22,11 @@ typedef enum {
     
     /*  Group 4实用工具上下文ID */
     KEY_CTX_UTILITIES,         /* Group 4：实用工具主界面 */
-    
+    KEY_CTX_CUSTOM_KEYS,
     /*  L2木鱼相关上下文ID */
     KEY_CTX_L2_MUYU,          /* L2：赛博木鱼界面 */
-    KEY_CTX_L2_TOMATO,        /* L2：番茄钟界面（预留） */
-    KEY_CTX_L2_STOPWATCH,        /* L2：秒表界面（预留） */
+    KEY_CTX_L2_TOMATO,        /* L2：番茄钟界面 */
+    KEY_CTX_L2_STOPWATCH,        /* L2：秒表界面 */
     KEY_CTX_L2_WEATHER,      /* L2：天气扩展界面 */
     KEY_CTX_MAX
 } key_context_id_t;

@@ -251,8 +251,6 @@ int encoder_controller_start_polling(void)
     }
     
     g_encoder.polling_enabled = true;
-    
-    rt_thread_mdelay(100);
     return 0;
 }
 

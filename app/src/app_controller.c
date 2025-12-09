@@ -31,17 +31,27 @@ static int usb_wait_enumeration_complete(uint32_t timeout_ms)
 {
     rt_tick_t start_tick = rt_tick_get();
     rt_tick_t timeout_tick = rt_tick_from_millisecond(timeout_ms);
+<<<<<<< HEAD
+    while ((rt_tick_get() - start_tick) < timeout_tick) {
+        rt_thread_mdelay(10);  // 空等待，没有检查USB状态
+    }
+=======
     
     while ((rt_tick_get() - start_tick) < timeout_tick) {
         rt_thread_mdelay(50);
     }
     
+>>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
     return 0;
 }
 
 static void usb_hardware_reset(void)
 {
+<<<<<<< HEAD
+    rt_thread_mdelay(10);
+=======
     rt_thread_mdelay(100);
+>>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
 }
 
 int app_controller_init(void)
@@ -59,7 +69,11 @@ int app_controller_init(void)
     
     while (retry_count < USB_INIT_MAX_RETRIES && !usb_init_success) {
         usb_hardware_reset();
+<<<<<<< HEAD
+        rt_thread_mdelay(10);
+=======
         rt_thread_mdelay(100);
+>>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
         
         hid_device_init(0, HAL_Get_USB_Base());
         
@@ -71,7 +85,11 @@ int app_controller_init(void)
         retry_count++;
         
         if (retry_count < USB_INIT_MAX_RETRIES) {
+<<<<<<< HEAD
+            rt_thread_mdelay(10);
+=======
             rt_thread_mdelay(500);
+>>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
         }
     }
     

@@ -37,7 +37,8 @@ void hid_consumer_click(uint8_t bits);
 bool hid_device_ready(void);
 void hid_reset_semaphore(void);
 bool hid_is_busy(void);
-
+void hid_kbd_press(uint8_t modifier, uint8_t keycode); 
+void hid_kbd_release(void);                              
 #ifdef __cplusplus
 }
 #endif

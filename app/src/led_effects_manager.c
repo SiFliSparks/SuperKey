@@ -103,9 +103,7 @@ static int led_feedback_event_handler(const event_t *event, void *user_data);
 static int led_effects_hardware_init(void)
 {
     HAL_PMU_ConfigPeriLdo(PMU_PERI_LDO3_3V3, true, true);
-    
-
-    rt_thread_mdelay(100);
+    rt_thread_mdelay(1);
     return 0;
 }
 
@@ -430,7 +428,7 @@ int led_effects_manager_init(void)
     
 
     led_effects_hardware_init();
-    rt_thread_mdelay(500);
+    rt_thread_mdelay(5);
     
 
     g_led_mgr.rgb_device = rgb_find_device(NULL);

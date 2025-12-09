@@ -152,6 +152,12 @@ extern const lv_image_dsc_t shortcut; // 快捷键图片
 extern const lv_image_dsc_t muyu;  // 木鱼图片资源
 extern const lv_image_dsc_t tomatolock;     // 番茄钟图片资源
 extern const lv_image_dsc_t calculagraph;   // 计时器图片资源
+<<<<<<< HEAD
+extern const lv_image_dsc_t custom1;    // 自定义1图片
+extern const lv_image_dsc_t custom2;    // 自定义2图片
+extern const lv_image_dsc_t custom3;    // 自定义3图片
+=======
+>>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
 extern const lv_image_dsc_t pre_song;      // 上一曲图片
 extern const lv_image_dsc_t next_song;    // 下一曲图片
 extern const lv_image_dsc_t play;       // 播放/暂停图片
@@ -217,10 +223,18 @@ static void build_left_media_panel(lv_obj_t *parent);
 static void build_middle_web_panel(lv_obj_t *parent);
 static void build_right_shortcut_panel(lv_obj_t *parent);
 
+/* Group 5 UI构建 */
+static void build_left_custom1_panel(lv_obj_t *parent);
+static void build_middle_custom2_panel(lv_obj_t *parent);
+static void build_right_custom3_panel(lv_obj_t *parent);
+
 /* 图片资源获取函数 */
 static const lv_image_dsc_t* get_muyu_image(void);
 static const lv_image_dsc_t* get_tomato_image(void);
 static const lv_image_dsc_t* get_calculagraph_image(void);
+static const lv_image_dsc_t* get_custom1_image(void);
+static const lv_image_dsc_t* get_custom2_image(void);
+static const lv_image_dsc_t* get_custom3_image(void);
 static const lv_image_dsc_t* get_media_image(void); 
 static const lv_image_dsc_t* get_web_image(void);
 static const lv_image_dsc_t* get_shortcut_image(void);
@@ -1018,6 +1032,64 @@ static void build_right_shortcut_panel(lv_obj_t *parent)
     lv_obj_align(shortcut_hint, LV_ALIGN_BOTTOM_MID, 0, -5);
 }
 
+
+/**
+ * 构建左屏 - 自定义1面板
+ */
+static void build_left_custom1_panel(lv_obj_t *parent)
+{
+    /* 自定义1图片入口 - 上半部分居中 */
+    lv_obj_t *custom1_icon = create_entrance_icon(parent, get_custom1_image());
+    if (custom1_icon) {
+        lv_obj_align(custom1_icon, LV_ALIGN_CENTER, 0, -10);
+    }
+    
+    /* 功能提示 - 底部小字 */
+    lv_obj_t *custom1_hint = lv_label_create(parent);
+    lv_label_set_text(custom1_hint, "自定义1");
+    lv_obj_add_style(custom1_hint, &g_ui_mgr.handles.style_small, 0);
+    lv_obj_set_style_text_color(custom1_hint, lv_color_make(200, 200, 200), 0);
+    lv_obj_align(custom1_hint, LV_ALIGN_BOTTOM_MID, 0, -5);
+}
+
+/**
+ * 构建中屏 - 自定义2面板
+ */
+static void build_middle_custom2_panel(lv_obj_t *parent)
+{
+    /* 自定义2图片入口 - 上半部分居中 */
+    lv_obj_t *custom2_icon = create_entrance_icon(parent, get_custom2_image());
+    if (custom2_icon) {
+        lv_obj_align(custom2_icon, LV_ALIGN_CENTER, 0, -10);
+    }
+    
+    /* 功能提示 - 底部小字 */
+    lv_obj_t *custom2_hint = lv_label_create(parent);
+    lv_label_set_text(custom2_hint, "自定义2");
+    lv_obj_add_style(custom2_hint, &g_ui_mgr.handles.style_small, 0);
+    lv_obj_set_style_text_color(custom2_hint, lv_color_make(200, 200, 200), 0);
+    lv_obj_align(custom2_hint, LV_ALIGN_BOTTOM_MID, 0, -5);
+}
+
+/**
+ * 构建右屏 - 自定义3面板
+ */
+static void build_right_custom3_panel(lv_obj_t *parent)
+{
+    /* 自定义3图片入口 - 上半部分居中 */
+    lv_obj_t *custom3_icon = create_entrance_icon(parent, get_custom3_image());
+    if (custom3_icon) {
+        lv_obj_align(custom3_icon, LV_ALIGN_CENTER, 0, -10);
+    }
+    
+    /* 功能提示 - 底部小字 */
+    lv_obj_t *custom3_hint = lv_label_create(parent);
+    lv_label_set_text(custom3_hint, "自定义3");
+    lv_obj_add_style(custom3_hint, &g_ui_mgr.handles.style_small, 0);
+    lv_obj_set_style_text_color(custom3_hint, lv_color_make(200, 200, 200), 0);
+    lv_obj_align(custom3_hint, LV_ALIGN_BOTTOM_MID, 0, -5);
+}
+
 /*********************
  *   L2 DIGITAL CLOCK
  *********************/
@@ -1429,6 +1501,10 @@ int screen_ui_manager_init(void)
     g_ui_mgr.handles.screen_group2 = lv_obj_create(NULL);
     g_ui_mgr.handles.screen_group3 = lv_obj_create(NULL);
     g_ui_mgr.handles.screen_group4 = lv_obj_create(NULL);
+<<<<<<< HEAD
+    g_ui_mgr.handles.screen_group5 = lv_obj_create(NULL);
+=======
+>>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
     
     g_ui_mgr.handles.screen_l2_time_detail = lv_obj_create(NULL);
     g_ui_mgr.handles.screen_l2_weather_forecast = lv_obj_create(NULL);
@@ -1440,7 +1516,11 @@ int screen_ui_manager_init(void)
     g_ui_mgr.handles.screen_l2_shortcut = lv_obj_create(NULL);
     
     if (!g_ui_mgr.handles.screen_group1 || !g_ui_mgr.handles.screen_group2 ||
+<<<<<<< HEAD
+        !g_ui_mgr.handles.screen_group3 || !g_ui_mgr.handles.screen_group4 || !g_ui_mgr.handles.screen_group5) {
+=======
         !g_ui_mgr.handles.screen_group3 || !g_ui_mgr.handles.screen_group4) {
+>>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
         cleanup_fonts();
         return -RT_ERROR;
     }
@@ -1456,6 +1536,10 @@ int screen_ui_manager_init(void)
     setup_screen_base_style(g_ui_mgr.handles.screen_group1);
     setup_screen_base_style(g_ui_mgr.handles.screen_group2);
     setup_screen_base_style(g_ui_mgr.handles.screen_group3);
+<<<<<<< HEAD
+    setup_screen_base_style(g_ui_mgr.handles.screen_group5);
+=======
+>>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
     setup_screen_base_style(g_ui_mgr.handles.screen_group4);
     
     setup_screen_base_style(g_ui_mgr.handles.screen_l2_time_detail);
@@ -1473,6 +1557,10 @@ int screen_ui_manager_init(void)
     
     g_ui_mgr.group1_built = false;
     g_ui_mgr.group2_built = false;
+<<<<<<< HEAD
+    g_ui_mgr.group5_built = false;
+=======
+>>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
     g_ui_mgr.group3_built = false;
     g_ui_mgr.group4_built = false;
     
@@ -1600,6 +1688,32 @@ int screen_ui_build_group4(void)
     build_right_stopwatch_panel(g_ui_mgr.handles.g4_right_panel);
     
     g_ui_mgr.group4_built = true;
+<<<<<<< HEAD
+    
+    return 0;
+}
+
+
+/* ========== Group5 构建 ========== */
+int screen_ui_build_group5(void)
+{
+    if (!g_ui_mgr.initialized || g_ui_mgr.group5_built) {
+        return 0;
+    }
+    
+    lv_obj_t *screen = g_ui_mgr.handles.screen_group5;
+    
+    g_ui_mgr.handles.g5_left_panel = create_panel(screen, LEFT_X);
+    g_ui_mgr.handles.g5_middle_panel = create_panel(screen, MID_X);
+    g_ui_mgr.handles.g5_right_panel = create_panel(screen, RIGHT_X);
+    
+    build_left_custom1_panel(g_ui_mgr.handles.g5_left_panel);
+    build_middle_custom2_panel(g_ui_mgr.handles.g5_middle_panel);
+    build_right_custom3_panel(g_ui_mgr.handles.g5_right_panel);
+    
+    g_ui_mgr.group5_built = true;
+=======
+>>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
     
     return 0;
 }
@@ -1914,6 +2028,14 @@ int screen_ui_switch_to_group(screen_group_t target_group)
             screen_ui_build_group4();
             target_screen = g_ui_mgr.handles.screen_group4;
             break;
+<<<<<<< HEAD
+        
+        case SCREEN_GROUP_5:
+            screen_ui_build_group5();
+            target_screen = g_ui_mgr.handles.screen_group5;
+            break;
+=======
+>>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
             
         default:
             return -RT_EINVAL;
@@ -1994,7 +2116,11 @@ int screen_ui_switch_to_l2(screen_l2_group_t l2_group, screen_l2_page_t l2_page)
         return -RT_ERROR;
     }
     
+<<<<<<< HEAD
+    load_screen_with_anim(target_screen, LV_SCR_LOAD_ANIM_MOVE_BOTTOM, 200);
+=======
     load_screen_with_anim(target_screen, LV_SCR_LOAD_ANIM_MOVE_LEFT, 300);
+>>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
     
     g_ui_mgr.current_level = SCREEN_LEVEL_2;
     g_ui_mgr.current_l2_group = l2_group;
@@ -2033,7 +2159,11 @@ int screen_ui_return_to_l1(screen_group_t l1_group)
         return -RT_ERROR;
     }
     
+<<<<<<< HEAD
+    load_screen_with_anim(target_screen, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200);
+=======
     load_screen_with_anim(target_screen, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 300);
+>>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
     
     g_ui_mgr.current_group = l1_group;
     g_ui_mgr.current_level = SCREEN_LEVEL_1;
@@ -2354,6 +2484,13 @@ int screen_ui_cleanup_all(void)
         lv_obj_del(g_ui_mgr.handles.screen_group4);
         g_ui_mgr.handles.screen_group4 = NULL;
     }
+<<<<<<< HEAD
+    if (g_ui_mgr.handles.screen_group5) {
+        lv_obj_del(g_ui_mgr.handles.screen_group5);
+        g_ui_mgr.handles.screen_group5 = NULL;
+    }
+=======
+>>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
     
     if (g_ui_mgr.handles.screen_l2_time_detail) {
         lv_obj_del(g_ui_mgr.handles.screen_l2_time_detail);
@@ -2564,6 +2701,21 @@ static const lv_image_dsc_t* get_shortcut_image(void)
     return &shortcut;
 }
 //获取木鱼图片资源
+//获取自定义1图片资源
+static const lv_image_dsc_t* get_custom1_image(void)
+{
+    return &custom1;
+}
+//获取自定义2图片资源
+static const lv_image_dsc_t* get_custom2_image(void)
+{
+    return &custom2;
+}
+//获取自定义3图片资源
+static const lv_image_dsc_t* get_custom3_image(void)
+{
+    return &custom3;
+}
 static const lv_image_dsc_t* get_muyu_image(void)
 {
     return &muyu;

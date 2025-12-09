@@ -97,7 +97,7 @@ static rt_err_t sht30_read_raw(uint8_t *data)
         return -RT_ERROR;
     }
 
-    rt_thread_mdelay(50);
+    rt_thread_mdelay(15);
     
     msg.flags = RT_I2C_RD;
     msg.buf = data;

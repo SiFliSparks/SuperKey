@@ -10,10 +10,57 @@
 #include <string.h>
 #include "screen_core.h"
 #include "encoder_controller.h"
+<<<<<<< HEAD
+#include "custom_key_storage.h"
+=======
+>>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
 
 static rt_tick_t last_muyu_tap_time = 0;
 
 #define MUYU_DEBOUNCE_MS 100  // 100ms防抖
+
+/* ============================================================================
+ * 自定义按键长按重复发送配置
+ * ============================================================================ */
+
+
+/* 自定义按键重复发送状态 */
+typedef struct {
+    bool is_pressed;              /* 按键是否处于按下状态 */
+    uint8_t group;                /* 当前按下的组 */
+    uint8_t key_idx;              /* 当前按下的按键索引 */
+} custom_key_press_state_t;
+static custom_key_press_state_t g_custom_key_state = {0};
+static int send_custom_key_press(uint8_t group, uint8_t key_idx);
+static void send_custom_key_release(void);
+static void custom_key_press_start(uint8_t group, uint8_t key_idx);
+static void custom_key_press_stop(void);
+/* 开始长按 - 只发送按下报告 */
+static void custom_key_press_start(uint8_t group, uint8_t key_idx)
+{
+    /* 如果已有按键按下，先释放 */
+    if (g_custom_key_state.is_pressed) {
+        send_custom_key_release();
+    }
+    
+    g_custom_key_state.is_pressed = true;
+    g_custom_key_state.group = group;
+    g_custom_key_state.key_idx = key_idx;
+    
+    /* 发送按下报告 */
+    send_custom_key_press(group, key_idx);
+}
+
+/* 结束长按 - 发送释放报告 */
+static void custom_key_press_stop(void)
+{
+    if (g_custom_key_state.is_pressed) {
+        send_custom_key_release();
+        g_custom_key_state.is_pressed = false;
+    }
+}
+
+
 /* LED映射函数 - 解决硬件映射问题 */
 static int get_led_index_for_key(int key_idx)
 {
@@ -26,6 +73,7 @@ static int get_led_index_for_key(int key_idx)
     }
 }
 static int screen_group4_key_handler(int key_idx, button_action_t action, void *user_data);
+static int screen_group5_key_handler(int key_idx, button_action_t action, void *user_data);
 static int screen_l2_muyu_key_handler(int key_idx, button_action_t action, void *user_data);
 static int screen_l2_weather_key_handler(int key_idx, button_action_t action, void *user_data);
 static int screen_l2_tomato_key_handler(int key_idx, button_action_t action, void *user_data);
@@ -171,6 +219,13 @@ static const key_led_binding_t group3_led_bindings[] = {
     {1, 1, 0x0080FF},   // 按键1 -> LED1: 蓝色呼吸
     {2, 0, 0xFF4000},   // 按键2 -> LED0: 红橙呼吸
     {3, 1, 0xFFE080},   // 按键3 -> LED1: 浅黄呼吸
+};
+
+static const key_led_binding_t group5_led_bindings[] = {
+    {0, 2, 0xFF6B6B},   // 自定义键1 -> LED2
+    {1, 1, 0x4ECDC4},   // 自定义键2 -> LED1
+    {2, 0, 0xFFE66D},   // 自定义键3 -> LED0
+    {3, 1, 0xFFFFFF},   // 切换组 -> LED1
 };
 
 static const key_led_binding_t l2_media_led_bindings[] = {
@@ -321,14 +376,29 @@ static int screen_group2_key_handler(int key_idx, button_action_t action, void *
 {
     (void)user_data;
     
-    // 修复连击问题：只处理按下事件，忽略抬起事件
     if (action != BUTTON_PRESSED) {
         return 0;
     }
     
-    // 使用修正后的映射触发LED特效
     trigger_key_led_effect(key_idx, group2_led_bindings, 
                           sizeof(group2_led_bindings)/sizeof(group2_led_bindings[0]));
+    
+    switch (key_idx) {
+        case 0:
+            // KEY1: 可选功能
+            break;
+        case 1:
+            // KEY2: 可选功能
+            break;
+        case 2:
+            // KEY3: 可选功能
+            break;
+        case 3:
+            // KEY4: 切换到下一组
+            screen_next_group();
+            break;
+    }
+    
     return 0;
 }
 
@@ -644,6 +714,19 @@ int screen_context_init_all(void)
         return ret;
     }
 
+    key_context_config_t config5 = {
+        .id = KEY_CTX_CUSTOM_KEYS,  
+        .name = "SCREEN_GROUP_5",
+        .handler = screen_group5_key_handler,
+        .user_data = NULL,
+        .priority = 100,
+        .exclusive = false
+    };
+    ret = key_manager_register_context(&config5);
+    if (ret != 0) {
+        return ret;
+    }
+
     g_contexts_initialized = true;
     
     return 0;
@@ -673,6 +756,7 @@ int screen_context_deinit_all(void)
     key_manager_unregister_context(KEY_CTX_L2_WEB);
     key_manager_unregister_context(KEY_CTX_L2_SHORTCUT);
     key_manager_unregister_context(KEY_CTX_UTILITIES);
+    key_manager_unregister_context(KEY_CTX_CUSTOM_KEYS);
     key_manager_unregister_context(KEY_CTX_L2_MUYU);    
     g_contexts_initialized = false;
     return 0;
@@ -705,6 +789,9 @@ int screen_context_activate_for_group(screen_group_t group)
         case SCREEN_GROUP_4:
             ret = key_manager_activate_context(KEY_CTX_UTILITIES);
             break;           
+        case SCREEN_GROUP_5:
+            ret = key_manager_activate_context(KEY_CTX_CUSTOM_KEYS);
+            break;
         default:
             return -RT_EINVAL;
     }
@@ -721,6 +808,7 @@ int screen_context_deactivate_all(void)
     key_manager_deactivate_context(KEY_CTX_SYSTEM);
     key_manager_deactivate_context(KEY_CTX_SETTINGS);
     key_manager_deactivate_context(KEY_CTX_UTILITIES);
+    key_manager_deactivate_context(KEY_CTX_CUSTOM_KEYS);
     key_manager_deactivate_context(KEY_CTX_L2_WEATHER);
 
     return 0;
@@ -916,17 +1004,12 @@ void screen_context_process_background_restore(void)
 {
     check_and_restore_background();
 }
-
-static int screen_group4_key_handler(int key_idx, button_action_t action, void *user_data);
-static int screen_l2_muyu_key_handler(int key_idx, button_action_t action, void *user_data);
-
 static const key_led_binding_t group4_led_bindings[] = {
     {0, 2, 0xFFD700},   // 按键0 -> LED2: 金色呼吸（木鱼）
     {1, 1, 0xFF6347},   // 按键1 -> LED1: 番茄红呼吸（番茄钟）
     {2, 0, 0x90EE90},   // 按键2 -> LED0: 浅绿色呼吸（秒表）
     {3, 1, 0xFFFFFF},   // 按键3 -> LED1: 白色呼吸（下一组）
 };
-
 static const key_led_binding_t l2_muyu_led_bindings[] = {
     {0, 2, 0xFFD700},   // 重置 -> LED2: 金色呼吸
     {1, 1, 0xFF8C00},   // 统计 -> LED1: 橙色呼吸
@@ -974,6 +1057,110 @@ static int screen_group4_key_handler(int key_idx, button_action_t action, void *
             
         case 3:
             // KEY4: 切换到下一组
+            screen_next_group();
+            break;
+    }
+    
+    return 0;
+}
+
+static uint8_t g_current_custom_group = 0;  /* 当前自定义按键组 (0-2) */
+
+/* 发送自定义按键的HID命令 */
+static int send_custom_key_hid(uint8_t group, uint8_t key_idx)
+{
+    custom_key_t key_config;
+    
+    if (custom_key_get(group, key_idx, &key_config) != 0) {
+        return -1;
+    }
+    
+    if (!key_config.enabled || key_config.combo_count == 0) {
+        return -1;
+    }
+    
+    for (int i = 0; i < key_config.combo_count; i++) {
+        uint8_t mod = key_config.combos[i].modifier;
+        uint8_t keycode = key_config.combos[i].keycode;
+        
+        if (keycode != 0) {
+            hid_kbd_send_combo(mod, keycode);
+            if (i < key_config.combo_count - 1) {
+                rt_thread_mdelay(50);
+            }
+        }
+    }
+    
+    return 0;
+}
+
+/* 发送自定义按键的HID命令 - 按下版本（不自动释放） */
+static int send_custom_key_press(uint8_t group, uint8_t key_idx)
+{
+    custom_key_t key_config;
+    
+    if (custom_key_get(group, key_idx, &key_config) != 0) {
+        return -1;
+    }
+    
+    if (!key_config.enabled || key_config.combo_count == 0) {
+        return -1;
+    }
+    
+    /* 对于长按，只发送第一个组合键（保持按下状态） */
+    uint8_t mod = key_config.combos[0].modifier;
+    uint8_t keycode = key_config.combos[0].keycode;
+    
+    if (keycode != 0) {
+        hid_kbd_press(mod, keycode);  // 只按下，不释放
+    }
+    
+    return 0;
+}
+
+/* 释放自定义按键 */
+static void send_custom_key_release(void)
+{
+    hid_kbd_release();
+}
+
+/* ============================================================================
+ * 自定义按键长按重复发送实现
+ * ============================================================================ */
+
+
+
+/* Group 5 自定义按键处理函数 - 支持长按重复发送 */
+static int screen_group5_key_handler(int key_idx, button_action_t action, void *user_data)
+{
+    (void)user_data;
+    
+    /* 处理按键释放 */
+    if (action == BUTTON_RELEASED) {
+        if (key_idx >= 0 && key_idx <= 2) {
+            custom_key_press_stop();  // ← 新名称
+        }
+        return 0;
+    }
+    
+    if (action != BUTTON_PRESSED) {
+        return 0;
+    }
+    
+    trigger_key_led_effect(key_idx, group5_led_bindings, 
+                          sizeof(group5_led_bindings)/sizeof(group5_led_bindings[0]));
+    
+    switch (key_idx) {
+        case 0:
+            custom_key_press_start(g_current_custom_group, 0); 
+            break;
+        case 1:
+            custom_key_press_start(g_current_custom_group, 1);  
+            break;
+        case 2:
+            custom_key_press_start(g_current_custom_group, 2);
+            break;
+        case 3:
             screen_next_group();
             break;
     }
@@ -1103,7 +1290,6 @@ int screen_context_get_muyu_count(uint32_t *tap_count, uint32_t *total_taps)
     muyu_get_counter(tap_count, total_taps);
     return 0;
 }
-
 
 // 3. 番茄钟初始化函数 (添加到木鱼初始化函数之后)
 

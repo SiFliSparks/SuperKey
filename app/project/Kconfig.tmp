@@ -1,4 +1,5 @@
 source "D:/program/SuperKey/app/boards/sf32lb52-superkey/hcpu/Kconfig.board"
 source "$SIFLI_SDK/customer/boards/Kconfig.v2"
 source "$SIFLI_SDK/Kconfig.v2"
+orsource "sf-pkgs/Kconfig.conandeps"
 rsource "Kconfig.proj"

@@ -8,6 +8,8 @@
 #include <stdio.h>
 #include "hid_device.h"
 #include "event_bus.h"
+#include "custom_key_storage.h"
+
 
 #define SERIAL_RX_BUFFER_SIZE 1024
 #define SERIAL_DEVICE_NAME "uart1"
@@ -629,7 +631,7 @@ static void check_and_publish_forecast(void)
             }
         }
         
-        /* 发布事件 - 使用现有的event_bus接口 */
+        /* 发布事件 */
         event_data_forecast_t forecast_event = { .forecast = forecast };
         event_bus_publish(EVENT_DATA_FORECAST_UPDATED, 
                          &forecast_event, 
@@ -638,6 +640,10 @@ static void check_and_publish_forecast(void)
                          MODULE_ID_SERIAL_COMM);
         
         g_finsh_data.forecast_valid = true;
+        
+        g_finsh_data.forecast_day0_valid = false;
+        g_finsh_data.forecast_day1_valid = false;
+        g_finsh_data.forecast_day2_valid = false;
     }
 }
 
@@ -882,6 +888,9 @@ static void handle_finsh_key_value(const char *key, const char *value)
     else if (strncmp(key, "forecast_day", 12) == 0) {
         handle_forecast_data(key, value);
     }
+    else if (strcmp(key, "custom_key") == 0) {
+        custom_key_parse_and_set(value);
+    }
     else {
         rt_kprintf("[Finsh] Unknown key: %s = %s\n", key, value);
     }
@@ -999,7 +1008,11 @@ static void serial_rx_thread_entry(void *parameter)
 int serial_data_handler_init(void)
 {
     rt_thread_t thread;
+<<<<<<< HEAD
+    custom_key_storage_init();
+=======
     rt_thread_mdelay(100);
+>>>>>>> 60f96ad0b552bf22eb20ff5fe20093f59f16656c
     serial_device = rt_device_find(SERIAL_DEVICE_NAME);
     if (!serial_device) {
         return -RT_ERROR;
