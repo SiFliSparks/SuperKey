@@ -18,7 +18,7 @@ extern "C" {
 
 /* 屏幕组定义 - 新增Group 4和Group 5 */
 typedef enum {
-    SCREEN_GROUP_1 = 0,  /* 第一组：时间/天气/股票 */
+    SCREEN_GROUP_1 = 0,  /* 第一组：时间/天气/传感器 */
     SCREEN_GROUP_2,      /* 第二组：CPU-GPU/内存/网络 */
     SCREEN_GROUP_3,      /* 第三组：HID快捷键 */
     SCREEN_GROUP_4,      /* 第四组：实用工具（木鱼/番茄钟/秒表） */
@@ -150,17 +150,6 @@ typedef struct {
     char update_time[32];      /* 更新时间 */
     bool valid;                /* 整体数据有效性 */
 } weather_forecast_data_t;
-
-/* 简化版股票数据结构 - 仅包含finsh协议支持的字段 */
-typedef struct {
-    char symbol[16];         /* 股票代码（默认值） */
-    char name[64];           /* 股票名称 - 来自stock_name字段 */
-    float current_price;     /* 当前价格 - 来自stock_price字段 */
-    float change_value;      /* 涨跌额 - 来自stock_change字段 */
-    float change_percent;    /* 涨跌幅(%) - 自动计算 */
-    char update_time[32];    /* 更新时间 */
-    bool valid;              /* 数据有效性 */
-} stock_data_t;
 
 /* 简化版系统监控数据结构 - 仅包含finsh协议支持的字段 */
 typedef struct {

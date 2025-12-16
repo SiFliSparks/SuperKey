@@ -8,7 +8,6 @@ static screen_timer_manager_t g_timer_mgr = {0};
 static const screen_timer_config_t default_configs[SCREEN_TIMER_MAX] = {
     {SCREEN_TIMER_CLOCK,   500,  true,  true,  "clock"},
     {SCREEN_TIMER_WEATHER, 500, true,  true,  "weather"},
-    {SCREEN_TIMER_STOCK,   500, true,  true,  "stock"},
     {SCREEN_TIMER_SYSTEM,  500,  true,  true,  "system"},
     {SCREEN_TIMER_SENSOR,  500,  true,  true,  "sensor"},
     {SCREEN_TIMER_MUYU,    200,   true,  true,  "muyu"},
@@ -35,10 +34,6 @@ static void safe_timer_callback(void *parameter)
             
         case SCREEN_TIMER_WEATHER:
             screen_core_post_update_weather(NULL);
-            break;
-            
-        case SCREEN_TIMER_STOCK:
-            screen_core_post_update_stock(NULL);
             break;
             
         case SCREEN_TIMER_SYSTEM:
@@ -206,7 +201,6 @@ int screen_timer_start_group1_timers(void)
     int ret = 0;
     ret |= screen_timer_start(SCREEN_TIMER_CLOCK);
     ret |= screen_timer_start(SCREEN_TIMER_WEATHER);
-    ret |= screen_timer_start(SCREEN_TIMER_STOCK);
     ret |= screen_timer_start(SCREEN_TIMER_SENSOR);
     
     return ret;
@@ -225,7 +219,6 @@ int screen_timer_stop_all_group_timers(void)
     int ret = 0;
     ret |= screen_timer_stop(SCREEN_TIMER_CLOCK);
     ret |= screen_timer_stop(SCREEN_TIMER_WEATHER);
-    ret |= screen_timer_stop(SCREEN_TIMER_STOCK);
     ret |= screen_timer_stop(SCREEN_TIMER_SYSTEM);
     ret |= screen_timer_stop(SCREEN_TIMER_SENSOR);
     

@@ -643,9 +643,6 @@ int event_bus_publish_data_update(event_type_t data_type, const void *data)
     case EVENT_DATA_WEATHER_UPDATED:
         data_size = sizeof(event_data_weather_t);
         break;
-    case EVENT_DATA_STOCK_UPDATED:
-        data_size = sizeof(event_data_stock_t);
-        break;
     case EVENT_DATA_SYSTEM_UPDATED:
         data_size = sizeof(event_data_system_t);
         break;

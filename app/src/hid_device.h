@@ -4,10 +4,14 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define MOD_LCTRL 0x01
+#define MOD_LCTRL  0x01
 #define MOD_LSHIFT 0x02
-#define MOD_LALT  0x04
-#define MOD_LGUI  0x08
+#define MOD_LALT   0x04
+#define MOD_LGUI   0x08
+#define MOD_RCTRL  0x10
+#define MOD_RSHIFT 0x20
+#define MOD_RALT   0x40
+#define MOD_RGUI   0x80
 
 #define OS_MODIFIER MOD_LCTRL
 
@@ -26,20 +30,66 @@
 #define CC_SCAN_NEXT   (1u << 3)
 #define CC_SCAN_PREV   (1u << 4)
 
+/* 6-Key Rollover 最大同时按键数 */
+#define HID_KBD_MAX_KEYS  6
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 void hid_device_init(uint8_t busid, uintptr_t reg_base);
+
+/* 原有API - 保持兼容 */
 void hid_kbd_send(uint8_t modifier, uint8_t keycode);
 void hid_kbd_send_combo(uint8_t modifier, uint8_t keycode);
 void hid_consumer_click(uint8_t bits);
 bool hid_device_ready(void);
 void hid_reset_semaphore(void);
 bool hid_is_busy(void);
+
+/* 原有长按API - 单键场景 */
 void hid_kbd_press(uint8_t modifier, uint8_t keycode); 
-void hid_kbd_release(void);                              
+void hid_kbd_release(void);
+
+/* ============================================================================
+ * 新增API - 支持多键同时按下 (6KRO)
+ * ============================================================================ */
+
+/**
+ * @brief 按下一个按键（添加到按键状态表）
+ * @param modifier 修饰键（会与现有修饰键合并）
+ * @param keycode HID keycode
+ * @return 0成功, <0失败（如已满6个键）
+ */
+int hid_kbd_key_down(uint8_t modifier, uint8_t keycode);
+
+/**
+ * @brief 释放一个按键（从按键状态表移除）
+ * @param modifier 要释放的修饰键
+ * @param keycode HID keycode
+ * @return 0成功, <0失败
+ */
+int hid_kbd_key_up(uint8_t modifier, uint8_t keycode);
+
+/**
+ * @brief 释放所有按键
+ */
+void hid_kbd_release_all(void);
+
+/**
+ * @brief 获取当前按下的按键数量
+ * @return 按键数量 (0-6)
+ */
+int hid_kbd_get_pressed_count(void);
+
+/**
+ * @brief 检查某个按键是否按下
+ * @param keycode HID keycode
+ * @return true已按下, false未按下
+ */
+bool hid_kbd_is_key_pressed(uint8_t keycode);
+
 #ifdef __cplusplus
 }
 #endif
-#endif
+#endif /* HID_DEVICE_H */

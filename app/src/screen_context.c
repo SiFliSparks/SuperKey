@@ -15,6 +15,7 @@
 static rt_tick_t last_muyu_tap_time = 0;
 
 #define MUYU_DEBOUNCE_MS 100  // 100ms防抖
+#define MAX_CUSTOM_KEYS_PRESSED 3
 
 /* ============================================================================
  * 自定义按键长按重复发送配置
@@ -26,34 +27,37 @@ typedef struct {
     bool is_pressed;              /* 按键是否处于按下状态 */
     uint8_t group;                /* 当前按下的组 */
     uint8_t key_idx;              /* 当前按下的按键索引 */
+    uint8_t last_modifier;        /* 最后发送的modifier (用于释放) */
+    uint8_t last_keycode;         /* 最后发送的keycode (用于释放) */
 } custom_key_press_state_t;
-static custom_key_press_state_t g_custom_key_state = {0};
-static int send_custom_key_press(uint8_t group, uint8_t key_idx);
-static void send_custom_key_release(void);
-static void custom_key_press_start(uint8_t group, uint8_t key_idx);
-static void custom_key_press_stop(void);
+static custom_key_press_state_t g_custom_key_states[MAX_CUSTOM_KEYS_PRESSED] = {0};
+static int send_custom_key_press(uint8_t group, uint8_t key_idx, uint8_t physical_key);
+static void send_custom_key_release(uint8_t physical_key);
+static void custom_key_press_start(uint8_t group, uint8_t key_idx, uint8_t physical_key);
+static void custom_key_press_stop(uint8_t physical_key);
 /* 开始长按 - 只发送按下报告 */
-static void custom_key_press_start(uint8_t group, uint8_t key_idx)
+static void custom_key_press_start(uint8_t group, uint8_t key_idx, uint8_t physical_key)
 {
-    /* 如果已有按键按下，先释放 */
-    if (g_custom_key_state.is_pressed) {
-        send_custom_key_release();
+    if (physical_key >= MAX_CUSTOM_KEYS_PRESSED) {
+        return;
     }
-    
-    g_custom_key_state.is_pressed = true;
-    g_custom_key_state.group = group;
-    g_custom_key_state.key_idx = key_idx;
-    
-    /* 发送按下报告 */
-    send_custom_key_press(group, key_idx);
+    /* 如果这个物理按键已经按下，先释放它 */
+    if (g_custom_key_states[physical_key].is_pressed) {
+        send_custom_key_release(physical_key);
+    }
+    /* 发送按下报告（不影响其他物理按键） */
+    send_custom_key_press(group, key_idx, physical_key);
 }
 
 /* 结束长按 - 发送释放报告 */
-static void custom_key_press_stop(void)
+static void custom_key_press_stop(uint8_t physical_key)
 {
-    if (g_custom_key_state.is_pressed) {
-        send_custom_key_release();
-        g_custom_key_state.is_pressed = false;
+    if (physical_key >= MAX_CUSTOM_KEYS_PRESSED) {
+        return;
+    }
+    
+    if (g_custom_key_states[physical_key].is_pressed) {
+        send_custom_key_release(physical_key);
     }
 }
 
@@ -83,7 +87,10 @@ static bool g_encoder_subscribed = false;
 /* 全局蓝色呼吸灯效果句柄 - 用于恢复背景特效 */
 static led_effect_handle_t g_background_breathing_effect = NULL;
 
-
+/* 番茄钟完成闪烁定时器相关 */
+static rt_timer_t g_tomato_complete_flash_timer = NULL;
+static uint8_t g_tomato_flash_count = 0;
+static bool g_tomato_flash_on = false;
 
 /* 简化版恢复机制 - 避免在ISR中创建复杂对象 */
 static rt_timer_t g_delayed_restore_timer = NULL;
@@ -96,6 +103,67 @@ static void start_background_breathing_effect(void)
         g_background_breathing_effect = NULL;
     }
     g_background_breathing_effect = led_effects_breathing(RGB_COLOR_BLUE, 2000, 255, 0);
+}
+
+/* 番茄钟完成闪烁定时器回调 - 红色闪烁，3秒内每秒两次 */
+static void tomato_complete_flash_callback(void *parameter)
+{
+    (void)parameter;
+    
+    // 总共闪烁6次（3秒 x 每秒2次）
+    // 每次回调间隔250ms，亮灭交替，共12次回调
+    if (g_tomato_flash_count >= 12) {
+        // 闪烁结束，恢复背景呼吸灯
+        rt_timer_stop(g_tomato_complete_flash_timer);
+        g_tomato_flash_count = 0;
+        g_tomato_flash_on = false;
+        
+        // 恢复蓝色背景呼吸灯
+        start_background_breathing_effect();
+        return;
+    }
+    
+    g_tomato_flash_on = !g_tomato_flash_on;
+    g_tomato_flash_count++;
+    
+    if (g_tomato_flash_on) {
+        // 亮起 - 三个LED同时红色闪烁
+        event_bus_publish_led_feedback(0, 0xFF0000, 240);  // LED0 红色
+        event_bus_publish_led_feedback(1, 0xFF0000, 240);  // LED1 红色
+        event_bus_publish_led_feedback(2, 0xFF0000, 240);  // LED2 红色
+    }
+    // 灭时不需要额外操作，LED反馈持续时间结束后自动恢复
+}
+
+/* 启动番茄钟完成红色闪烁效果 - 3秒，每秒2次 */
+static void start_tomato_complete_flash(void)
+{
+    // 先停止背景呼吸灯
+    if (g_background_breathing_effect) {
+        led_effects_stop_effect(g_background_breathing_effect);
+        g_background_breathing_effect = NULL;
+    }
+    
+    // 重置闪烁状态
+    g_tomato_flash_count = 0;
+    g_tomato_flash_on = false;
+    
+    // 创建或重启闪烁定时器（250ms间隔实现每秒2次闪烁）
+    if (!g_tomato_complete_flash_timer) {
+        g_tomato_complete_flash_timer = rt_timer_create(
+            "tomato_flash",
+            tomato_complete_flash_callback,
+            RT_NULL,
+            rt_tick_from_millisecond(250),
+            RT_TIMER_FLAG_PERIODIC
+        );
+    }
+    
+    if (g_tomato_complete_flash_timer) {
+        // 立即触发第一次闪烁
+        tomato_complete_flash_callback(NULL);
+        rt_timer_start(g_tomato_complete_flash_timer);
+    }
 }
 
 /* 简化的ISR安全定时器回调 - 只设置标志位 */
@@ -744,6 +812,15 @@ int screen_context_deinit_all(void)
         g_delayed_restore_timer = NULL;
     }
     
+    // 清理番茄钟完成闪烁定时器
+    if (g_tomato_complete_flash_timer) {
+        rt_timer_stop(g_tomato_complete_flash_timer);
+        rt_timer_delete(g_tomato_complete_flash_timer);
+        g_tomato_complete_flash_timer = NULL;
+    }
+    g_tomato_flash_count = 0;
+    g_tomato_flash_on = false;
+    
     key_manager_unregister_context(KEY_CTX_MENU_NAVIGATION);
     key_manager_unregister_context(KEY_CTX_SYSTEM);
     key_manager_unregister_context(KEY_CTX_SETTINGS);
@@ -1083,7 +1160,7 @@ static int send_custom_key_hid(uint8_t group, uint8_t key_idx)
         if (keycode != 0) {
             hid_kbd_send_combo(mod, keycode);
             if (i < key_config.combo_count - 1) {
-                rt_thread_mdelay(50);
+                rt_thread_mdelay(5);
             }
         }
     }
@@ -1092,9 +1169,13 @@ static int send_custom_key_hid(uint8_t group, uint8_t key_idx)
 }
 
 /* 发送自定义按键的HID命令 - 按下版本（不自动释放） */
-static int send_custom_key_press(uint8_t group, uint8_t key_idx)
+static int send_custom_key_press(uint8_t group, uint8_t key_idx, uint8_t physical_key)
 {
     custom_key_t key_config;
+    
+    if (physical_key >= MAX_CUSTOM_KEYS_PRESSED) {
+        return -1;
+    }
     
     if (custom_key_get(group, key_idx, &key_config) != 0) {
         return -1;
@@ -1104,23 +1185,56 @@ static int send_custom_key_press(uint8_t group, uint8_t key_idx)
         return -1;
     }
     
-    /* 对于长按，只发送第一个组合键（保持按下状态） */
-    uint8_t mod = key_config.combos[0].modifier;
-    uint8_t keycode = key_config.combos[0].keycode;
+    /* 发送前 N-1 个组合键（完整的按下+释放） */
+    for (int i = 0; i < key_config.combo_count - 1; i++) {
+        uint8_t mod = key_config.combos[i].modifier;
+        uint8_t keycode = key_config.combos[i].keycode;
+        
+        if (keycode != 0) {
+            hid_kbd_send_combo(mod, keycode);  // 按下+释放
+            rt_thread_mdelay(50);
+        }
+    }
+    
+    /* 最后一个组合键使用6KRO API - 添加到按键状态表 */
+    int last_idx = key_config.combo_count - 1;
+    uint8_t mod = key_config.combos[last_idx].modifier;
+    uint8_t keycode = key_config.combos[last_idx].keycode;
     
     if (keycode != 0) {
-        hid_kbd_press(mod, keycode);  // 只按下，不释放
+        /* 记录这个物理按键的状态，用于释放时移除 */
+        g_custom_key_states[physical_key].is_pressed = true;
+        g_custom_key_states[physical_key].group = group;
+        g_custom_key_states[physical_key].key_idx = key_idx;
+        g_custom_key_states[physical_key].last_modifier = mod;
+        g_custom_key_states[physical_key].last_keycode = keycode;
+        
+        /* 使用新的6KRO API - 添加按键（不会覆盖已有按键） */
+        hid_kbd_key_down(mod, keycode);
     }
     
     return 0;
 }
 
 /* 释放自定义按键 */
-static void send_custom_key_release(void)
+static void send_custom_key_release(uint8_t physical_key)
 {
-    hid_kbd_release();
+    if (physical_key >= MAX_CUSTOM_KEYS_PRESSED) {
+        return;
+    }
+    
+    custom_key_press_state_t *state = &g_custom_key_states[physical_key];
+    
+    if (state->is_pressed) {
+        /* 使用6KRO API - 只移除这个物理按键对应的HID按键 */
+        hid_kbd_key_up(state->last_modifier, state->last_keycode);
+        
+        /* 清除状态 */
+        state->is_pressed = false;
+        state->last_modifier = 0;
+        state->last_keycode = 0;
+    }
 }
-
 /* ============================================================================
  * 自定义按键长按重复发送实现
  * ============================================================================ */
@@ -1132,10 +1246,10 @@ static int screen_group5_key_handler(int key_idx, button_action_t action, void *
 {
     (void)user_data;
     
-    /* 处理按键释放 */
+    /* 处理按键释放 - 传递物理按键索引 */
     if (action == BUTTON_RELEASED) {
         if (key_idx >= 0 && key_idx <= 2) {
-            custom_key_press_stop();  // ← 新名称
+            custom_key_press_stop((uint8_t)key_idx);  /* 传递物理按键索引 */
         }
         return 0;
     }
@@ -1149,15 +1263,20 @@ static int screen_group5_key_handler(int key_idx, button_action_t action, void *
     
     switch (key_idx) {
         case 0:
-            custom_key_press_start(g_current_custom_group, 0); 
+            /* 物理按键0 -> 自定义键0 */
+            custom_key_press_start(g_current_custom_group, 0, 0);
             break;
         case 1:
-            custom_key_press_start(g_current_custom_group, 1);  
+            /* 物理按键1 -> 自定义键1 */
+            custom_key_press_start(g_current_custom_group, 1, 1);
             break;
         case 2:
-            custom_key_press_start(g_current_custom_group, 2);
+            /* 物理按键2 -> 自定义键2 */
+            custom_key_press_start(g_current_custom_group, 2, 2);
             break;
         case 3:
+            /* 切换组前释放所有按键 */
+            hid_kbd_release_all();
             screen_next_group();
             break;
     }
@@ -1368,6 +1487,18 @@ void tomato_process_countdown(void)
                 }
                 
                 g_tomato_data.last_update_tick = current_tick;
+
+                // 先释放锁，再执行UI和LED操作
+                rt_mutex_release(g_tomato_lock);
+                
+                // 1. 停止主页番茄钟/时钟轮换显示
+                screen_ui_stop_tomato_background_display();
+                
+                // 2. 启动红色闪烁效果（3秒，每秒2次）
+                start_tomato_complete_flash();
+                
+                // 已释放锁，直接返回
+                return;
             }
         }
     }

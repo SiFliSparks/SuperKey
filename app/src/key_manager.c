@@ -1,11 +1,9 @@
-
-
 #include "key_manager.h"
 #include "buttons_board.h"
 #include "event_bus.h"
 #include <string.h>
 #include "led_effects_manager.h"
-#include "led_effects_manager.h"
+
 #define MAX_CONTEXT_STACK_DEPTH 4
 #define KEY_THREAD_STACK_SIZE   4096
 #define KEY_THREAD_PRIORITY     10
@@ -63,7 +61,6 @@ static struct {
 static void key_thread_entry(void *parameter);
 static void key_process_message(const key_message_t *msg);
 static int key_send_message(const key_message_t *msg);
-static void key_handle_led_feedback(int key_idx, button_action_t action);
 static void key_isr_callback(int32_t pin, button_action_t action);
 
 
@@ -124,7 +121,9 @@ static void key_process_message(const key_message_t *msg)
                     context_info_t *ctx = &g_key_mgr.contexts[g_key_mgr.current_ctx];
                     if (ctx->registered && ctx->active && ctx->config.handler) {
                         int ret = ctx->config.handler(key_idx, action, ctx->config.user_data);
+                        (void)ret; /* suppress unused warning */
                     }
+                }
             }
             break;
             
@@ -175,7 +174,7 @@ static void key_process_message(const key_message_t *msg)
             break;
     }
 }
-}
+
 static int key_send_message(const key_message_t *msg)
 {
     if (!g_key_mgr.key_msg_queue) {

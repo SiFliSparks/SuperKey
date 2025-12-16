@@ -45,26 +45,19 @@ typedef struct {
         lv_obj_t *weather_icon;
     } group1_weather;
     
-    struct {
-        lv_obj_t *name_label;
-        lv_obj_t *price_label;
-        lv_obj_t *change_label;
-        lv_obj_t *update_time_label;
-    } group1_stock;
-    
     lv_obj_t *g2_left_panel;
     lv_obj_t *g2_middle_panel;
     lv_obj_t *g2_right_panel;
     
     struct {
         lv_obj_t *cpu_title;
-        lv_obj_t *cpu_usage;
+        lv_obj_t *cpu_usage;      /* 仪表中心百分比标签 */
         lv_obj_t *cpu_temp;
-        lv_obj_t *cpu_chart;
+        lv_obj_t *cpu_gauge;      /* CPU占用率仪表 */
         lv_obj_t *gpu_title;
-        lv_obj_t *gpu_usage;
+        lv_obj_t *gpu_usage;      /* 仪表中心百分比标签 */
         lv_obj_t *gpu_temp;
-        lv_obj_t *gpu_chart;
+        lv_obj_t *gpu_gauge;      /* GPU占用率仪表 */
     } group2_cpu_gpu;
     
     struct {
@@ -250,7 +243,6 @@ int screen_ui_update_time_display(void);
 int screen_ui_update_tomato_display(void);
 int screen_ui_update_weather_display(const weather_data_t *data);
 int screen_ui_update_l2_weather_forecast(const weather_forecast_data_t *forecast);
-int screen_ui_update_stock_display(const stock_data_t *data);
 int screen_ui_update_system_display(const system_monitor_data_t *data);
 int screen_ui_update_sensor_display(void);
 int screen_ui_update_muyu_display(void);

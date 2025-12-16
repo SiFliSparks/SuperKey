@@ -16,7 +16,6 @@ static screen_core_t g_core = {0};
 /* 消息处理函数声明 */
 static int process_update_time_message(void);
 static int process_update_weather_message(const weather_data_t *data);
-static int process_update_stock_message(const stock_data_t *data);
 static int process_update_system_message(const system_monitor_data_t *data);
 static int process_switch_group_message(const screen_switch_msg_t *msg);
 static int process_enter_l2_message(const screen_l2_enter_msg_t *msg);
@@ -167,24 +166,6 @@ int screen_core_post_update_weather(const weather_data_t *data)
     return (result == RT_EOK) ? 0 : -RT_ERROR;
 }
 
-int screen_core_post_update_stock(const stock_data_t *data)
-{
-    if (!g_core.message_queue) {
-        return -RT_ERROR;
-    }
-    
-    screen_message_t msg = {0};
-    msg.type = SCREEN_MSG_UPDATE_STOCK;
-    msg.timestamp = rt_tick_get();
-    
-    if (data) {
-        msg.data.stock_data = *data;
-    }
-    
-    rt_err_t result = rt_mq_send(g_core.message_queue, &msg, sizeof(msg));
-    return (result == RT_EOK) ? 0 : -RT_ERROR;
-}
-
 int screen_core_post_update_system(const system_monitor_data_t *data)
 {
     if (!g_core.message_queue) {
@@ -243,10 +224,6 @@ int screen_core_process_messages(void)
                 
             case SCREEN_MSG_UPDATE_WEATHER:
                 process_update_weather_message(&msg.data.weather_data);
-                break;
-                
-            case SCREEN_MSG_UPDATE_STOCK:
-                process_update_stock_message(&msg.data.stock_data);
                 break;
                 
             case SCREEN_MSG_UPDATE_SYSTEM:
@@ -344,27 +321,6 @@ static int process_update_weather_message(const weather_data_t *data)
     screen_ui_update_sensor_display();
     
     return ret;
-}
-
-static int process_update_stock_message(const stock_data_t *data)
-{
-    /* 只在Group 1显示时更新股票 */
-    if (g_core.current_group != SCREEN_GROUP_1 || g_core.current_level != SCREEN_LEVEL_1) {
-        return 0;
-    }
-    
-    stock_data_t stock_data = {0};
-    
-    /* 如果消息中没有数据，从数据管理器获取 */
-    if (!data || !data->valid) {
-        if (data_manager_get_stock(&stock_data) == 0 && stock_data.valid) {
-            data = &stock_data;
-        } else {
-            return 0; /* 没有有效数据 */
-        }
-    }
-    
-    return screen_ui_update_stock_display(data);
 }
 
 static int process_update_system_message(const system_monitor_data_t *data)
@@ -478,7 +434,6 @@ static int process_switch_group_message(const screen_switch_msg_t *msg)
     /* 停止当前组的定时器 */
     /* 切换组时不停止CLOCK，只停止其他定时器 */
     screen_timer_stop(SCREEN_TIMER_WEATHER);
-    screen_timer_stop(SCREEN_TIMER_STOCK);
     screen_timer_stop(SCREEN_TIMER_SENSOR);
     screen_timer_stop(SCREEN_TIMER_SYSTEM);
     
@@ -496,10 +451,8 @@ static int process_switch_group_message(const screen_switch_msg_t *msg)
         if (msg->target_group == SCREEN_GROUP_1) {
             /* CLOCK已在运行，只启动其他定时器 */
             screen_timer_start(SCREEN_TIMER_WEATHER);
-            screen_timer_start(SCREEN_TIMER_STOCK);
             screen_timer_start(SCREEN_TIMER_SENSOR);
             screen_core_post_update_weather(NULL);  // 立即请求天气更新
-            screen_core_post_update_stock(NULL);     // 立即请求股票更新    
             // 回到Group1时,如果番茄钟在运行,启动后台显示
             tomato_data_t tomato_data;
             if (screen_context_get_tomato_data(&tomato_data) == 0 &&
@@ -527,7 +480,6 @@ static int process_enter_l2_message(const screen_l2_enter_msg_t *msg)
     
     /* 保持CLOCK运行，只停止其他定时器 */
     screen_timer_stop(SCREEN_TIMER_WEATHER);
-    screen_timer_stop(SCREEN_TIMER_STOCK);
     screen_timer_stop(SCREEN_TIMER_SENSOR);
     screen_timer_stop(SCREEN_TIMER_SYSTEM);
     
@@ -628,11 +580,9 @@ static int process_return_l1_message(void)
         if (l1_group == SCREEN_GROUP_1) {
             /* CLOCK定时器已在运行，启动其他定时器 */
             screen_timer_start(SCREEN_TIMER_WEATHER);
-            screen_timer_start(SCREEN_TIMER_STOCK);
             screen_timer_start(SCREEN_TIMER_SENSOR);
             screen_core_post_update_time();
             screen_core_post_update_weather(NULL);
-            screen_core_post_update_stock(NULL);
         } else if (l1_group == SCREEN_GROUP_2) {
             screen_timer_start_group2_timers();
             screen_core_post_update_system(NULL);

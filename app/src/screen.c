@@ -73,10 +73,6 @@ static int screen_data_event_handler(const event_t *event, void *user_data)
             screen_core_post_update_weather(&event->data.weather.weather);
             break;
             
-        case EVENT_DATA_STOCK_UPDATED:
-            screen_core_post_update_stock(&event->data.stock.stock);
-            break;
-            
         case EVENT_DATA_SYSTEM_UPDATED:
             screen_core_post_update_system(&event->data.system.system);
             break;
@@ -146,8 +142,6 @@ void create_triple_screen_display(void)
                        NULL, EVENT_PRIORITY_HIGH);
     event_bus_subscribe(EVENT_DATA_WEATHER_UPDATED, screen_data_event_handler, 
                        NULL, EVENT_PRIORITY_NORMAL);
-    event_bus_subscribe(EVENT_DATA_STOCK_UPDATED, screen_data_event_handler, 
-                       NULL, EVENT_PRIORITY_NORMAL);
     event_bus_subscribe(EVENT_DATA_SYSTEM_UPDATED, screen_data_event_handler, 
                        NULL, EVENT_PRIORITY_NORMAL);
     event_bus_subscribe(EVENT_DATA_SENSOR_UPDATED, screen_data_event_handler, 
@@ -184,7 +178,6 @@ void cleanup_triple_screen_display(void)
 
     event_bus_unsubscribe(EVENT_ENCODER_ROTATED, screen_encoder_event_handler);
     event_bus_unsubscribe(EVENT_DATA_WEATHER_UPDATED, screen_data_event_handler);
-    event_bus_unsubscribe(EVENT_DATA_STOCK_UPDATED, screen_data_event_handler);
     event_bus_unsubscribe(EVENT_DATA_SYSTEM_UPDATED, screen_data_event_handler);
     event_bus_unsubscribe(EVENT_DATA_SENSOR_UPDATED, screen_data_event_handler);
     
@@ -255,22 +248,6 @@ int screen_update_weather(const weather_data_t *data)
         // 发布事件通知屏幕更新
         event_data_weather_t weather_event = { .weather = *data };
         event_bus_publish(EVENT_DATA_WEATHER_UPDATED, &weather_event, sizeof(weather_event),
-                         EVENT_PRIORITY_NORMAL, MODULE_ID_SERIAL_COMM);
-    }
-    
-    return ret;
-}
-
-int screen_update_stock(const stock_data_t *data)
-{
-    if (!data) return -1;
-    
-    // 通过data_manager更新
-    int ret = data_manager_update_stock(data);
-    if (ret == 0) {
-        // 发布事件通知屏幕更新
-        event_data_stock_t stock_event = { .stock = *data };
-        event_bus_publish(EVENT_DATA_STOCK_UPDATED, &stock_event, sizeof(stock_event),
                          EVENT_PRIORITY_NORMAL, MODULE_ID_SERIAL_COMM);
     }
     

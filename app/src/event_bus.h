@@ -12,7 +12,6 @@ extern "C" {
 
 typedef enum {
     EVENT_DATA_WEATHER_UPDATED = 0x1000,
-    EVENT_DATA_STOCK_UPDATED,
     EVENT_DATA_SYSTEM_UPDATED,
     EVENT_DATA_SENSOR_UPDATED,
     EVENT_DATA_FORECAST_UPDATED,
@@ -63,10 +62,6 @@ typedef struct {
 } event_data_weather_t;
 
 typedef struct {
-    stock_data_t stock;
-} event_data_stock_t;
-
-typedef struct {
     system_monitor_data_t system;
 } event_data_system_t;
 
@@ -107,7 +102,6 @@ typedef struct {
     union {
         event_data_generic_t generic;
         event_data_weather_t weather;
-        event_data_stock_t stock;
         event_data_system_t system;
         event_data_forecast_t forecast;
         event_data_screen_switch_t screen_switch;

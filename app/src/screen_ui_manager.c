@@ -183,11 +183,7 @@ static lv_obj_t* create_panel(lv_obj_t *parent, lv_coord_t x_pos)
 }
 static screen_ui_manager_t g_ui_mgr = {0};
 static struct {
-    lv_coord_t cpu_history[15];
-    lv_coord_t gpu_history[15];
     lv_coord_t mem_history[5];
-    uint8_t cpu_index;
-    uint8_t gpu_index;
 } chart_history = {0};
 /* 番茄钟后台显示轮换状态 */
 static struct {
@@ -208,7 +204,6 @@ static void cleanup_fonts(void);
 /* Group 1 UI构建 */
 static void build_left_datetime_panel(lv_obj_t *parent);
 static void build_middle_weather_panel(lv_obj_t *parent);
-static void build_right_stock_panel(lv_obj_t *parent);
 
 /* Group 2 UI构建 */
 static void build_left_cpu_gpu_panel(lv_obj_t *parent);
@@ -250,9 +245,9 @@ static const lv_image_dsc_t* get_mem_icon(void);
 /* 通用图标和全尺寸图标创建函数 */
 static lv_obj_t* create_entrance_icon(lv_obj_t *parent, const lv_image_dsc_t *img_src);
 static lv_obj_t* create_fullsize_icon(lv_obj_t *parent, const lv_image_dsc_t *img_src);
+/* 仪表盘创建函数 */
+static lv_obj_t* create_usage_arc(lv_obj_t *parent, lv_color_t color, lv_obj_t **label_out);
 /* 图表创建函数 */
-static lv_obj_t* create_usage_chart(lv_obj_t *parent, lv_color_t color);
-static void update_usage_chart(lv_obj_t *chart, float value, lv_color_t color);
 static lv_obj_t* create_memory_chart(lv_obj_t *parent, lv_color_t color); 
 /* L2 UI构建 - 数字时钟相关 */
 static const lv_image_dsc_t* get_digit_image(int digit);
@@ -533,40 +528,6 @@ static void build_middle_weather_panel(lv_obj_t *parent)
 }
 
 /**
- * 构建右屏 - 股票信息面板
- */
-static void build_right_stock_panel(lv_obj_t *parent)
-{
-    /* 股票名称 - 顶部居中 */
-    g_ui_mgr.handles.group1_stock.name_label = lv_label_create(parent);
-    lv_label_set_text(g_ui_mgr.handles.group1_stock.name_label, "等待数据");
-    lv_obj_add_style(g_ui_mgr.handles.group1_stock.name_label, &g_ui_mgr.handles.style_medium, 0);
-    lv_obj_set_style_text_color(g_ui_mgr.handles.group1_stock.name_label, lv_color_white(), 0);
-    lv_obj_align(g_ui_mgr.handles.group1_stock.name_label, LV_ALIGN_TOP_MID, 0, 0);
-    
-    /* 当前价格 - 标题下方，更大字号 */
-    g_ui_mgr.handles.group1_stock.price_label = lv_label_create(parent);
-    lv_label_set_text(g_ui_mgr.handles.group1_stock.price_label, "----------");
-    lv_obj_add_style(g_ui_mgr.handles.group1_stock.price_label, &g_ui_mgr.handles.style_xlarge, 0);
-    lv_obj_set_style_text_color(g_ui_mgr.handles.group1_stock.price_label, lv_color_white(), 0);
-    lv_obj_align_to(g_ui_mgr.handles.group1_stock.price_label, g_ui_mgr.handles.group1_stock.name_label, LV_ALIGN_OUT_BOTTOM_MID, 0, 5);
-    
-    /* 涨跌信息合并显示 */
-    g_ui_mgr.handles.group1_stock.change_label = lv_label_create(parent);
-    lv_label_set_text(g_ui_mgr.handles.group1_stock.change_label, "----.----\n---.---%");
-    lv_obj_add_style(g_ui_mgr.handles.group1_stock.change_label, &g_ui_mgr.handles.style_medium, 0);
-    lv_obj_set_style_text_color(g_ui_mgr.handles.group1_stock.change_label, lv_color_make(255, 80, 80), 0);
-    lv_obj_align_to(g_ui_mgr.handles.group1_stock.change_label, g_ui_mgr.handles.group1_stock.price_label, LV_ALIGN_OUT_BOTTOM_MID, 0, 3);
-    
-    /* 更新时间 - 底部居中，小字 */
-    g_ui_mgr.handles.group1_stock.update_time_label = lv_label_create(parent);
-    lv_label_set_text(g_ui_mgr.handles.group1_stock.update_time_label, "--:--:--");
-    lv_obj_add_style(g_ui_mgr.handles.group1_stock.update_time_label, &g_ui_mgr.handles.style_xsmall, 0);
-    lv_obj_set_style_text_color(g_ui_mgr.handles.group1_stock.update_time_label, lv_color_make(120, 120, 120), 0);
-    lv_obj_align(g_ui_mgr.handles.group1_stock.update_time_label, LV_ALIGN_BOTTOM_MID, 0, 0);
-}
-
-/**
  * 构建天气预报某一天面板
  */
 static void build_forecast_day_panel(lv_obj_t *parent, const char *day_title,
@@ -749,25 +710,17 @@ static void build_left_cpu_gpu_panel(lv_obj_t *parent)
     /* CPU图标 - 居中显示，占满板块 */
     lv_obj_t *cpu_icon = create_fullsize_icon(parent, get_cpu_icon());
     
-    /* CPU温度 - 改为左对齐 */
+    /* CPU温度 - 右上角 */
     g_ui_mgr.handles.group2_cpu_gpu.cpu_temp = lv_label_create(parent);
     lv_label_set_text(g_ui_mgr.handles.group2_cpu_gpu.cpu_temp, "--.-°C");
     lv_obj_add_style(g_ui_mgr.handles.group2_cpu_gpu.cpu_temp, &g_ui_mgr.handles.style_large, 0);
     lv_obj_set_style_text_color(g_ui_mgr.handles.group2_cpu_gpu.cpu_temp, lv_color_make(255, 100, 100), 0);
-    // 改为左对齐，紧靠左边
     lv_obj_align(g_ui_mgr.handles.group2_cpu_gpu.cpu_temp, LV_ALIGN_TOP_RIGHT, -5, 5);
     
-    
-    /* CPU占用率 - 底部上方显示 (原温度位置上方) */
-    g_ui_mgr.handles.group2_cpu_gpu.cpu_usage = lv_label_create(parent);
-    lv_label_set_text(g_ui_mgr.handles.group2_cpu_gpu.cpu_usage, "--.-%");
-    lv_obj_add_style(g_ui_mgr.handles.group2_cpu_gpu.cpu_usage, &g_ui_mgr.handles.style_medium, 0);
-    lv_obj_set_style_text_color(g_ui_mgr.handles.group2_cpu_gpu.cpu_usage, lv_color_make(255, 165, 0), 0);
-    lv_obj_align(g_ui_mgr.handles.group2_cpu_gpu.cpu_usage, LV_ALIGN_BOTTOM_MID, 0, -70);
-    
-    /* CPU柱状图图表 - 底部显示，15个数据点 */
-    g_ui_mgr.handles.group2_cpu_gpu.cpu_chart = create_usage_chart(parent, lv_color_make(255, 165, 0));
-    lv_obj_align(g_ui_mgr.handles.group2_cpu_gpu.cpu_chart, LV_ALIGN_BOTTOM_MID, 3, -3);
+    /* CPU占用率仪表 - 图标下方 */
+    g_ui_mgr.handles.group2_cpu_gpu.cpu_gauge = create_usage_arc(parent, 
+        lv_color_make(255, 165, 0), &g_ui_mgr.handles.group2_cpu_gpu.cpu_usage);
+    lv_obj_align(g_ui_mgr.handles.group2_cpu_gpu.cpu_gauge, LV_ALIGN_BOTTOM_MID, 0, 10);
 }
 
 /**
@@ -816,25 +769,17 @@ static void build_right_network_panel(lv_obj_t *parent)
     /* GPU图标 - 居中显示，占满板块 */
     lv_obj_t *gpu_icon = create_fullsize_icon(parent, get_gpu_icon());
     
-    /* GPU温度 - 改为左对齐 */
+    /* GPU温度 - 右上角 */
     g_ui_mgr.handles.group2_cpu_gpu.gpu_temp = lv_label_create(parent);
     lv_label_set_text(g_ui_mgr.handles.group2_cpu_gpu.gpu_temp, "--.-°C");
     lv_obj_add_style(g_ui_mgr.handles.group2_cpu_gpu.gpu_temp, &g_ui_mgr.handles.style_large, 0);
     lv_obj_set_style_text_color(g_ui_mgr.handles.group2_cpu_gpu.gpu_temp, lv_color_make(100, 255, 150), 0);
-    // 改为左对齐，紧靠左边
     lv_obj_align(g_ui_mgr.handles.group2_cpu_gpu.gpu_temp, LV_ALIGN_TOP_RIGHT, -5, 5);
     
-    
-    /* GPU占用率 - 底部上方显示 (原温度位置上方) */
-    g_ui_mgr.handles.group2_cpu_gpu.gpu_usage = lv_label_create(parent);
-    lv_label_set_text(g_ui_mgr.handles.group2_cpu_gpu.gpu_usage, "--.-%");
-    lv_obj_add_style(g_ui_mgr.handles.group2_cpu_gpu.gpu_usage, &g_ui_mgr.handles.style_medium, 0);
-    lv_obj_set_style_text_color(g_ui_mgr.handles.group2_cpu_gpu.gpu_usage, lv_color_make(0, 255, 127), 0);
-    lv_obj_align(g_ui_mgr.handles.group2_cpu_gpu.gpu_usage, LV_ALIGN_BOTTOM_MID, 0, -70);
-    
-    /* GPU柱状图图表 - 底部显示，15个数据点 */
-    g_ui_mgr.handles.group2_cpu_gpu.gpu_chart = create_usage_chart(parent, lv_color_make(0, 255, 127));
-    lv_obj_align(g_ui_mgr.handles.group2_cpu_gpu.gpu_chart, LV_ALIGN_BOTTOM_MID, 3, -3);
+    /* GPU占用率仪表 - 图标下方 */
+    g_ui_mgr.handles.group2_cpu_gpu.gpu_gauge = create_usage_arc(parent, 
+        lv_color_make(0, 255, 127), &g_ui_mgr.handles.group2_cpu_gpu.gpu_usage);
+    lv_obj_align(g_ui_mgr.handles.group2_cpu_gpu.gpu_gauge, LV_ALIGN_BOTTOM_MID, 0, 10);
 }
 
 /**
@@ -859,9 +804,23 @@ static lv_obj_t* create_memory_chart(lv_obj_t *parent, lv_color_t color)
     lv_coord_t bar_width = 8;   // 稍宽一些，因为只有5个柱子
     lv_coord_t bar_gap = 3;
     lv_coord_t start_x = 3;
+    lv_coord_t max_bar_height = 46;  // 柱子最大高度
     
-    /* 创建5个bar */
+    /* 创建5个bar（每个包含背景条+前景条） */
     for (int i = 0; i < 5; i++) {
+        /* 先创建灰色背景条 - 显示最大高度范围 */
+        lv_obj_t *bg_bar = lv_obj_create(container);
+        lv_obj_set_size(bg_bar, bar_width, max_bar_height);
+        lv_obj_set_pos(bg_bar, start_x + i * (bar_width + bar_gap), 2);
+        
+        /* 背景条样式 - 深灰色 */
+        lv_obj_set_style_bg_color(bg_bar, lv_color_make(50, 50, 50), 0);
+        lv_obj_set_style_bg_opa(bg_bar, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(bg_bar, 0, 0);
+        lv_obj_set_style_radius(bg_bar, 0, 0);
+        lv_obj_set_style_pad_all(bg_bar, 0, 0);
+        
+        /* 再创建前景数据条 */
         lv_obj_t *bar = lv_obj_create(container);
         lv_obj_set_size(bar, bar_width, 2);
         lv_obj_set_pos(bar, start_x + i * (bar_width + bar_gap), 48);
@@ -878,94 +837,59 @@ static lv_obj_t* create_memory_chart(lv_obj_t *parent, lv_color_t color)
 }
 
 /**
- * 创建LVGL柱状图图表
+ * 创建占用率仪表盘（圆弧样式）
  * @param parent 父容器
- * @param color 柱子颜色
- * @return 图表对象
+ * @param color 仪表盘颜色
+ * @param label_out 输出参数，返回中心百分比标签指针
+ * @return 仪表盘对象（arc）
  */
-static lv_obj_t* create_usage_chart(lv_obj_t *parent, lv_color_t color)
+static lv_obj_t* create_usage_arc(lv_obj_t *parent, lv_color_t color, lv_obj_t **label_out)
 {
-    lv_obj_t *container = lv_obj_create(parent);
-    // 高度从40改为50
-    lv_obj_set_size(container, SCREEN_WIDTH - 10, 50);
+    /* 仪表盘尺寸 - 占满图标下方的空间 */
+    lv_coord_t arc_size = 100;  /* 仪表盘直径 */
     
-    /* 容器样式 */
-    lv_obj_set_style_bg_color(container, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(container, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(container, 0, 0);
-    lv_obj_set_style_pad_all(container, 0, 0);
-    lv_obj_set_style_radius(container, 0, 0);
+    /* 创建Arc对象 */
+    lv_obj_t *arc = lv_arc_create(parent);
+    lv_obj_set_size(arc, arc_size, arc_size);
     
-    lv_coord_t bar_width = 5;
-    lv_coord_t bar_gap = 2;
-    lv_coord_t start_x = 5;
+    /* 设置Arc角度范围：从底部左侧到底部右侧（半圆形仪表） */
+    lv_arc_set_rotation(arc, 135);              /* 起始角度旋转 */
+    lv_arc_set_bg_angles(arc, 0, 270);          /* 背景弧度范围 */
+    lv_arc_set_range(arc, 0, 100);              /* 数值范围0-100% */
+    lv_arc_set_value(arc, 0);                   /* 初始值 */
     
-    /* 创建15个bar */
-    for (int i = 0; i < 15; i++) {
-        lv_obj_t *bar = lv_obj_create(container);
-        lv_obj_set_size(bar, bar_width, 2);
-        // Y坐标从36改为48（容器高度50，底部留2像素）
-        lv_obj_set_pos(bar, start_x + i * (bar_width + bar_gap), 48);
-        
-        /* bar样式 */
-        lv_obj_set_style_bg_color(bar, color, 0);
-        lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, 0);
-        lv_obj_set_style_border_width(bar, 0, 0);
-        lv_obj_set_style_radius(bar, 0, 0);
-        lv_obj_set_style_pad_all(bar, 0, 0);
+    /* 移除旋钮（只显示弧线） */
+    lv_obj_remove_style(arc, NULL, LV_PART_KNOB);
+    lv_obj_clear_flag(arc, LV_OBJ_FLAG_CLICKABLE);
+    
+    /* 背景弧线样式（灰色底） */
+    lv_obj_set_style_arc_color(arc, lv_color_make(40, 40, 40), LV_PART_MAIN);
+    lv_obj_set_style_arc_width(arc, 10, LV_PART_MAIN);
+    lv_obj_set_style_arc_rounded(arc, true, LV_PART_MAIN);
+    
+    /* 前景弧线样式（彩色指示） */
+    lv_obj_set_style_arc_color(arc, color, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_width(arc, 10, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_rounded(arc, true, LV_PART_INDICATOR);
+    
+    /* 移除背景 */
+    lv_obj_set_style_bg_opa(arc, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(arc, 0, 0);
+    lv_obj_set_style_pad_all(arc, 0, 0);
+    
+    /* 在Arc中心创建百分比标签 */
+    lv_obj_t *label = lv_label_create(arc);
+    lv_label_set_text(label, "--%");
+    lv_obj_add_style(label, &g_ui_mgr.handles.style_medium, 0);
+    lv_obj_set_style_text_color(label, color, 0);
+    lv_obj_center(label);
+    
+    /* 返回标签指针 */
+    if (label_out) {
+        *label_out = label;
     }
     
-    return container;
-}
-
-
-
-
-/**
- * 更新图表数据 - 添加新数据点并滚动
- * @param chart 图表对象
- * @param value 新的数值 (0-100)
- * @param color 柱子颜色
- */
-static void update_usage_chart(lv_obj_t *container, float value, lv_color_t color)
-{
-    if (!container || !lv_obj_is_valid(container)) {
-        return;
-    }
-    
-    /* 限制数值范围 */
-    if (value < 0) value = 0;
-    if (value > 100) value = 100;
-    
-    /* 计算高度 (0-100 映射到 2-35像素) */
-    lv_coord_t bar_height = (lv_coord_t)((value * 33.0f / 100.0f) + 2.0f);
-    if (bar_height < 2) bar_height = 2;
-    if (bar_height > 35) bar_height = 35;
-    
-    /* 判断是CPU还是GPU图表 */
-    bool is_cpu = (color.red == 255 && color.green == 165 && color.blue == 0);
-    lv_coord_t *history = is_cpu ? chart_history.cpu_history : chart_history.gpu_history;
-    
-    /* 关键：所有历史数据向左移动一格（丢弃最左边的旧数据） */
-    for (int i = 0; i < 14; i++) {
-        history[i] = history[i + 1];  // 把右边的数据移到左边
-    }
-    
-    /* 新数据放在最右边（索引14） */
-    history[14] = bar_height;
-    
-    /* 更新所有柱子的显示 */
-    for (int i = 0; i < 15; i++) {
-        lv_obj_t *bar = lv_obj_get_child(container, i);
-        if (bar && lv_obj_is_valid(bar)) {
-            lv_coord_t h = history[i];
-            if (h < 2) h = 2;
-            
-            /* 更新柱子高度和位置 */
-            lv_obj_set_height(bar, h);
-            lv_obj_set_y(bar, 38 - h);  // 底部对齐
-        }
-    }
+    return arc;
 }
 
 /*********************
@@ -1585,18 +1509,13 @@ int screen_ui_build_group1(void)
     
     build_left_datetime_panel(g_ui_mgr.handles.g1_left_panel);
     build_middle_weather_panel(g_ui_mgr.handles.g1_middle_panel);
-    build_right_stock_panel(g_ui_mgr.handles.g1_right_panel);
+    /* 右屏暂空 - 原股票面板已移除 */
     
     g_ui_mgr.group1_built = true;
     
     weather_data_t weather = {0};
     if (data_manager_get_weather(&weather) == 0 && weather.valid) {
         screen_ui_update_weather_display(&weather);
-    }
-    
-    stock_data_t stock = {0};
-    if (data_manager_get_stock(&stock) == 0 && stock.valid) {
-        screen_ui_update_stock_display(&stock);
     }
     
     screen_ui_update_time_display();
@@ -2230,41 +2149,6 @@ int screen_ui_update_weather_display(const weather_data_t *data)
     return 0;
 }
 
-int screen_ui_update_stock_display(const stock_data_t *data)
-{
-    if (!g_ui_mgr.initialized || g_ui_mgr.current_group != SCREEN_GROUP_1 || !data || !data->valid) {
-        return 0;
-    }
-
-    if (g_ui_mgr.handles.group1_stock.name_label && lv_obj_is_valid(g_ui_mgr.handles.group1_stock.name_label)) {
-        lv_label_set_text(g_ui_mgr.handles.group1_stock.name_label, data->name);
-    }
-
-    if (g_ui_mgr.handles.group1_stock.price_label && lv_obj_is_valid(g_ui_mgr.handles.group1_stock.price_label)) {
-        char price_str[16];
-        rt_snprintf(price_str, sizeof(price_str), "%.2f", data->current_price);
-        lv_label_set_text(g_ui_mgr.handles.group1_stock.price_label, price_str);
-    }
-
-    if (g_ui_mgr.handles.group1_stock.change_label && lv_obj_is_valid(g_ui_mgr.handles.group1_stock.change_label)) {
-        char change_str[32];
-        rt_snprintf(change_str, sizeof(change_str), "%+.2f\n%+.2f%%", 
-                   data->change_value, data->change_percent);
-        lv_label_set_text(g_ui_mgr.handles.group1_stock.change_label, change_str);
-        
-        lv_color_t color = (data->change_value >= 0) ? 
-                          lv_color_make(255, 80, 80) :
-                          lv_color_make(80, 255, 80);
-        lv_obj_set_style_text_color(g_ui_mgr.handles.group1_stock.change_label, color, 0);
-    }
-
-    if (g_ui_mgr.handles.group1_stock.update_time_label && lv_obj_is_valid(g_ui_mgr.handles.group1_stock.update_time_label)) {
-        lv_label_set_text(g_ui_mgr.handles.group1_stock.update_time_label, data->update_time);
-    }
-
-    return 0;
-}
-
 int screen_ui_update_system_display(const system_monitor_data_t *data)
 {
     if (!g_ui_mgr.initialized || g_ui_mgr.current_group != SCREEN_GROUP_2 || !data || !data->valid) {
@@ -2277,36 +2161,16 @@ int screen_ui_update_system_display(const system_monitor_data_t *data)
         lv_label_set_text(g_ui_mgr.handles.group2_cpu_gpu.cpu_temp, temp_str);
     }
 
-    if (g_ui_mgr.handles.group2_cpu_gpu.cpu_usage && lv_obj_is_valid(g_ui_mgr.handles.group2_cpu_gpu.cpu_usage)) {
-        char usage_str[16];
-        rt_snprintf(usage_str, sizeof(usage_str), "%.1f%%", data->cpu_usage);
-        lv_label_set_text(g_ui_mgr.handles.group2_cpu_gpu.cpu_usage, usage_str);
+    /* 更新CPU仪表 */
+    if (g_ui_mgr.handles.group2_cpu_gpu.cpu_gauge && lv_obj_is_valid(g_ui_mgr.handles.group2_cpu_gpu.cpu_gauge)) {
+        /* 更新仪表数值 */
+        lv_arc_set_value(g_ui_mgr.handles.group2_cpu_gpu.cpu_gauge, (int16_t)data->cpu_usage);
         
-        static uint8_t cpu_update_counter = 0;
-        cpu_update_counter++;
-        
-        if (cpu_update_counter >= 5) {
-            cpu_update_counter = 0;
-            
-            if (g_ui_mgr.handles.group2_cpu_gpu.cpu_chart && lv_obj_is_valid(g_ui_mgr.handles.group2_cpu_gpu.cpu_chart)) {
-                for (int i = 0; i < 14; i++) {
-                    chart_history.cpu_history[i] = chart_history.cpu_history[i + 1];
-                }
-                
-                lv_coord_t bar_height = (lv_coord_t)((data->cpu_usage * 55.0f / 100.0f) + 2.0f);
-
-                chart_history.cpu_history[14] = bar_height;
-                
-                for (int i = 0; i < 15; i++) {
-                    lv_obj_t *bar = lv_obj_get_child(g_ui_mgr.handles.group2_cpu_gpu.cpu_chart, i);
-                    if (bar && lv_obj_is_valid(bar)) {
-                        lv_coord_t h = chart_history.cpu_history[i];
-                        if (h < 2) h = 2;
-                        lv_obj_set_height(bar, h);
-                        lv_obj_set_y(bar, 48 - h);
-                    }
-                }
-            }
+        /* 更新中心百分比文字 */
+        if (g_ui_mgr.handles.group2_cpu_gpu.cpu_usage && lv_obj_is_valid(g_ui_mgr.handles.group2_cpu_gpu.cpu_usage)) {
+            char usage_str[16];
+            rt_snprintf(usage_str, sizeof(usage_str), "%.0f%%", data->cpu_usage);
+            lv_label_set_text(g_ui_mgr.handles.group2_cpu_gpu.cpu_usage, usage_str);
         }
     }
 
@@ -2316,37 +2180,16 @@ int screen_ui_update_system_display(const system_monitor_data_t *data)
         lv_label_set_text(g_ui_mgr.handles.group2_cpu_gpu.gpu_temp, temp_str);
     }
 
-    if (g_ui_mgr.handles.group2_cpu_gpu.gpu_usage && lv_obj_is_valid(g_ui_mgr.handles.group2_cpu_gpu.gpu_usage)) {
-        char usage_str[16];
-        rt_snprintf(usage_str, sizeof(usage_str), "%.1f%%", data->gpu_usage);
-        lv_label_set_text(g_ui_mgr.handles.group2_cpu_gpu.gpu_usage, usage_str);
+    /* 更新GPU仪表 */
+    if (g_ui_mgr.handles.group2_cpu_gpu.gpu_gauge && lv_obj_is_valid(g_ui_mgr.handles.group2_cpu_gpu.gpu_gauge)) {
+        /* 更新仪表数值 */
+        lv_arc_set_value(g_ui_mgr.handles.group2_cpu_gpu.gpu_gauge, (int16_t)data->gpu_usage);
         
-        static uint8_t gpu_update_counter = 0;
-        gpu_update_counter++;
-        
-        if (gpu_update_counter >= 5) {
-            gpu_update_counter = 0;
-            
-            if (g_ui_mgr.handles.group2_cpu_gpu.gpu_chart && lv_obj_is_valid(g_ui_mgr.handles.group2_cpu_gpu.gpu_chart)) {
-                for (int i = 0; i < 14; i++) {
-                    chart_history.gpu_history[i] = chart_history.gpu_history[i + 1];
-                }
-                
-                lv_coord_t bar_height = (lv_coord_t)((data->gpu_usage * 33.0f / 100.0f) + 2.0f);
-                if (bar_height < 2) bar_height = 2;
-                if (bar_height > 35) bar_height = 35;
-                chart_history.gpu_history[14] = bar_height;
-                
-                for (int i = 0; i < 15; i++) {
-                    lv_obj_t *bar = lv_obj_get_child(g_ui_mgr.handles.group2_cpu_gpu.gpu_chart, i);
-                    if (bar && lv_obj_is_valid(bar)) {
-                        lv_coord_t h = chart_history.gpu_history[i];
-                        if (h < 2) h = 2;
-                        lv_obj_set_height(bar, h);
-                        lv_obj_set_y(bar, 48 - h);
-                    }
-                }
-            }
+        /* 更新中心百分比文字 */
+        if (g_ui_mgr.handles.group2_cpu_gpu.gpu_usage && lv_obj_is_valid(g_ui_mgr.handles.group2_cpu_gpu.gpu_usage)) {
+            char usage_str[16];
+            rt_snprintf(usage_str, sizeof(usage_str), "%.0f%%", data->gpu_usage);
+            lv_label_set_text(g_ui_mgr.handles.group2_cpu_gpu.gpu_usage, usage_str);
         }
     }
 
@@ -2374,7 +2217,7 @@ int screen_ui_update_system_display(const system_monitor_data_t *data)
             chart_history.mem_history[4] = bar_height;
             
             for (int i = 0; i < 5; i++) {
-                lv_obj_t *bar = lv_obj_get_child(g_ui_mgr.handles.group2_memory.ram_chart, i);
+                lv_obj_t *bar = lv_obj_get_child(g_ui_mgr.handles.group2_memory.ram_chart, i * 2 + 1);
                 if (bar && lv_obj_is_valid(bar)) {
                     lv_coord_t h = chart_history.mem_history[i];
                     if (h < 2) h = 2;

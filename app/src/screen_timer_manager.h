@@ -13,7 +13,6 @@ extern "C" {
 typedef enum {
     SCREEN_TIMER_CLOCK = 0,      /* 时钟更新 - 1秒 */
     SCREEN_TIMER_WEATHER,        /* 天气更新 - 30秒 */
-    SCREEN_TIMER_STOCK,          /* 股票更新 - 10秒 */
     SCREEN_TIMER_SYSTEM,         /* 系统监控 - 2秒 */
     SCREEN_TIMER_SENSOR,         /* 传感器 - 5秒 */
     SCREEN_TIMER_MUYU,           /* 木鱼 - 0.2秒 */

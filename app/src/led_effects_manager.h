@@ -93,8 +93,7 @@ led_effect_handle_t led_effects_blink(uint32_t color, uint32_t period_ms, uint8_
 /* 自定义效果注册 */
 int led_effects_register_custom_effect(const char *name, led_custom_effect_func_t func);
 led_effect_handle_t led_effects_start_custom_effect(const char *name, const led_effect_config_t *config);
-
-/* 注意：led_effects_update() 函数已移除 - 现在由内部线程自动处理 */
+void led_effects_clear_manual_mask(void);
 
 /* 使用drv_rgbled.h中的颜色定义，避免重复定义 */
 #define LED_COLOR_OFF           RGB_COLOR_BLACK

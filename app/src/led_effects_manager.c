@@ -97,6 +97,7 @@ static int apply_effect_static(const led_effect_handle_internal_t *effect, uint3
 static int apply_effect_breathing(const led_effect_handle_internal_t *effect, uint32_t *buffer);
 static int apply_effect_flowing(const led_effect_handle_internal_t *effect, uint32_t *buffer);
 static int apply_effect_blink(const led_effect_handle_internal_t *effect, uint32_t *buffer);
+static int apply_effect_rainbow(const led_effect_handle_internal_t *effect, uint32_t *buffer);
 static int led_feedback_event_handler(const event_t *event, void *user_data);
 
 /* 硬件初始化函数实现 */
@@ -257,7 +258,7 @@ static void led_process_message(const led_message_t *msg)
                 uint32_t duration_ms = msg->data.led_feedback.duration_ms;
                 
                 if (led_index >= 0 && led_index < (int)g_led_mgr.actual_led_count) {
-                    g_led_mgr.manual_led_mask[led_index] = false;
+                    //g_led_mgr.manual_led_mask[led_index] = false;
                     for (int i = 0; i < MAX_CONCURRENT_EFFECTS; i++) {
                         if (!g_led_mgr.effects[i].active) {
                             led_effect_handle_internal_t *effect = &g_led_mgr.effects[i];
@@ -361,6 +362,9 @@ static void led_do_update_effects(void)
                 break;
             case LED_EFFECT_BLINK:
                 apply_effect_blink(effect, g_led_mgr.led_buffer);
+                break;
+            case LED_EFFECT_RAINBOW:
+                apply_effect_rainbow(effect, g_led_mgr.led_buffer);
                 break;
             default:
                 break;
@@ -873,4 +877,126 @@ uint32_t led_effects_apply_brightness(uint32_t color, uint8_t brightness)
     b = (b * brightness) / 255;
     
     return RGB_MAKE_COLOR(r, g, b);
+}
+
+static int apply_effect_rainbow(const led_effect_handle_internal_t *effect, uint32_t *buffer)
+{
+    uint32_t cycle_pos = effect->effect_tick % effect->config.period_ms;
+    float progress = (float)cycle_pos / effect->config.period_ms;
+    
+    /* 为每个LED计算彩虹色 */
+    for (int i = effect->config.led_start; 
+         i < effect->config.led_start + effect->config.led_count && i < (int)g_led_mgr.actual_led_count; 
+         i++) {
+        
+        /* 每个LED的色相偏移 */
+        float led_offset = (float)(i - effect->config.led_start) / effect->config.led_count;
+        float hue = progress + led_offset;
+        if (hue > 1.0f) hue -= 1.0f;
+        
+        /* HSV to RGB (简化版，S=1, V=1) */
+        float h = hue * 6.0f;
+        int sector = (int)h;
+        float f = h - sector;
+        
+        uint8_t r, g, b;
+        switch (sector % 6) {
+            case 0: r = 255; g = (uint8_t)(255 * f); b = 0; break;
+            case 1: r = (uint8_t)(255 * (1-f)); g = 255; b = 0; break;
+            case 2: r = 0; g = 255; b = (uint8_t)(255 * f); break;
+            case 3: r = 0; g = (uint8_t)(255 * (1-f)); b = 255; break;
+            case 4: r = (uint8_t)(255 * f); g = 0; b = 255; break;
+            default: r = 255; g = 0; b = (uint8_t)(255 * (1-f)); break;
+        }
+        
+        uint32_t color = RGB_MAKE_COLOR(r, g, b);
+        color = led_effects_apply_brightness(color, effect->config.brightness);
+        buffer[i] = color;
+    }
+    
+    return 0;
+}
+
+/**
+ * @brief 检查LED效果管理器是否已初始化
+ */
+bool led_effects_is_initialized(void)
+{
+    return g_led_mgr.initialized;
+}
+
+/**
+ * @brief 获取LED数量
+ */
+int led_effects_get_led_count(void)
+{
+    if (!g_led_mgr.initialized) {
+        return 0;
+    }
+    return (int)g_led_mgr.actual_led_count;
+}
+
+/**
+ * @brief 闪烁效果快捷函数
+ */
+led_effect_handle_t led_effects_blink(uint32_t color, uint32_t period_ms, uint8_t brightness, uint32_t duration_ms)
+{
+    if (!g_led_mgr.initialized) {
+        return RT_NULL;
+    }
+
+    led_effect_config_t config = {
+        .type = LED_EFFECT_BLINK,
+        .duration_ms = duration_ms,
+        .period_ms = period_ms,
+        .brightness = brightness,
+        .colors = {color, RGB_COLOR_BLACK},
+        .color_count = 2,
+        .reverse = false,
+        .led_start = 0,
+        .led_count = g_led_mgr.actual_led_count,
+        .custom_data = RT_NULL
+    };
+    
+    return led_effects_start_effect(&config);
+}
+
+/**
+ * @brief 彩虹效果快捷函数
+ */
+led_effect_handle_t led_effects_rainbow(uint32_t period_ms, uint8_t brightness, uint32_t duration_ms)
+{
+    if (!g_led_mgr.initialized) {
+        return RT_NULL;
+    }
+
+    led_effect_config_t config = {
+        .type = LED_EFFECT_RAINBOW,
+        .duration_ms = duration_ms,
+        .period_ms = period_ms,
+        .brightness = brightness,
+        .colors = {0},
+        .color_count = 0,
+        .reverse = false,
+        .led_start = 0,
+        .led_count = g_led_mgr.actual_led_count,
+        .custom_data = RT_NULL
+    };
+    
+    return led_effects_start_effect(&config);
+}
+
+
+/**
+ * @brief 清除所有LED的手动遮罩
+ */
+void led_effects_clear_manual_mask(void)
+{
+    if (!g_led_mgr.initialized) {
+        return;
+    }
+    
+    for (uint32_t i = 0; i < g_led_mgr.actual_led_count; i++) {
+        g_led_mgr.manual_led_mask[i] = false;
+    }
 }

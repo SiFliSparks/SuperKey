@@ -9,7 +9,8 @@
 #include "hid_device.h"
 #include "event_bus.h"
 #include "custom_key_storage.h"
-
+#include "led_effects_manager.h"  /* LED串口控制 */
+#include "firmware_version.h"
 
 #define SERIAL_RX_BUFFER_SIZE 1024
 #define SERIAL_DEVICE_NAME "uart1"
@@ -20,7 +21,7 @@ static rt_device_t serial_device = RT_NULL;
 static rt_sem_t rx_sem = RT_NULL;
 static rt_timer_t watchdog_timer = RT_NULL;
 static void check_and_publish_forecast(void);
-
+static void handle_sys_get_command(const char *key);
 static struct {
     rt_tick_t last_received_tick;
     bool connection_alive;
@@ -429,12 +430,6 @@ static struct {
     int city_code;
     bool weather_valid;
     
-    /* 股票数据 */
-    char stock_name[64];
-    float stock_price;
-    float stock_change;
-    bool stock_valid;
-    
     /* 系统监控数据 */
     float cpu_usage;
     float cpu_temp;
@@ -467,6 +462,305 @@ static struct {
     
 } g_finsh_data = {0};
 
+/* ==================== LED串口控制扩展 - 开始 ==================== */
+
+/* 预定义颜色表 */
+typedef struct {
+    const char *name;
+    uint32_t color;
+} led_color_preset_t;
+
+static const led_color_preset_t g_led_color_presets[] = {
+    {"red",      0xFF0000},
+    {"green",    0x00FF00},
+    {"blue",     0x0000FF},
+    {"white",    0xFFFFFF},
+    {"yellow",   0xFFFF00},
+    {"cyan",     0x00FFFF},
+    {"magenta",  0xFF00FF},
+    {"orange",   0xFF8000},
+    {"purple",   0x8000FF},
+    {"pink",     0xFF80C0},
+    {"black",    0x000000},
+    {"off",      0x000000},
+    {NULL, 0}
+};
+
+/* LED控制状态 */
+static struct {
+    led_effect_handle_t current_effect;
+    uint32_t current_color;
+    uint8_t current_brightness;
+    bool initialized;
+} g_led_ctrl = {
+    .current_effect = NULL,
+    .current_color = 0xFF0000,
+    .current_brightness = 128,
+    .initialized = false
+};
+
+/* 解析十六进制颜色 */
+static uint32_t led_parse_hex_color(const char *hex_str)
+{
+    if (!hex_str || strlen(hex_str) == 0) return 0;
+    
+    if (hex_str[0] == '#') hex_str++;
+    else if (hex_str[0] == '0' && (hex_str[1] == 'x' || hex_str[1] == 'X')) hex_str += 2;
+    
+    char *endptr;
+    uint32_t color = strtoul(hex_str, &endptr, 16);
+    return (endptr == hex_str) ? 0 : (color & 0xFFFFFF);
+}
+
+/* 查找预设颜色 */
+static bool led_lookup_preset_color(const char *name, uint32_t *color)
+{
+    if (!name || !color) return false;
+    
+    for (int i = 0; g_led_color_presets[i].name != NULL; i++) {
+        if (strcasecmp(name, g_led_color_presets[i].name) == 0) {
+            *color = g_led_color_presets[i].color;
+            return true;
+        }
+    }
+    return false;
+}
+
+/* 停止当前LED效果 */
+static void led_stop_current_effect(void)
+{
+    if (g_led_ctrl.current_effect != NULL) {
+        led_effects_stop_effect(g_led_ctrl.current_effect);
+        g_led_ctrl.current_effect = NULL;
+    }
+}
+
+/* 处理LED亮度命令 */
+static void handle_led_brightness(const char *value)
+{
+    if (!value) return;
+    
+    int brightness = atoi(value);
+    if (brightness < 0) brightness = 0;
+    if (brightness > 255) brightness = 255;
+    
+    g_led_ctrl.current_brightness = (uint8_t)brightness;
+    led_effects_set_global_brightness(g_led_ctrl.current_brightness);
+    rt_kprintf("[LED] Brightness: %d\n", brightness);
+}
+
+/* 处理LED颜色命令 */
+static void handle_led_color(const char *value)
+{
+    if (!value) return;
+    
+    uint32_t color = led_parse_hex_color(value);
+    g_led_ctrl.current_color = color;
+    led_stop_current_effect();
+    led_effects_set_all_leds(color);
+    rt_kprintf("[LED] Color: 0x%06X\n", color);
+}
+
+/* 处理单个LED命令 */
+static void handle_led_single(const char *value)
+{
+    if (!value) return;
+    
+    char value_copy[64];
+    strncpy(value_copy, value, sizeof(value_copy) - 1);
+    value_copy[sizeof(value_copy) - 1] = '\0';
+    
+    char *comma = strchr(value_copy, ',');
+    if (!comma) {
+        rt_kprintf("[LED] Invalid format: led_index,RRGGBB\n");
+        return;
+    }
+    
+    *comma = '\0';
+    int led_index = atoi(value_copy);
+    uint32_t color = led_parse_hex_color(comma + 1);
+    
+    /* 简单范围检查，假设最多16个LED */
+    if (led_index < 0 || led_index >= 16) {
+        rt_kprintf("[LED] Invalid index: %d\n", led_index);
+        return;
+    }
+    
+    led_effects_set_led((uint8_t)led_index, color);
+    rt_kprintf("[LED] LED[%d]: 0x%06X\n", led_index, color);
+}
+
+/* 处理预设颜色命令 */
+static void handle_led_preset(const char *value)
+{
+    if (!value) return;
+    
+    uint32_t color;
+    if (led_lookup_preset_color(value, &color)) {
+        g_led_ctrl.current_color = color;
+        led_stop_current_effect();
+        led_effects_set_all_leds(color);
+        rt_kprintf("[LED] Preset '%s': 0x%06X\n", value, color);
+    } else {
+        rt_kprintf("[LED] Unknown preset: %s\n", value);
+    }
+}
+
+/* 处理效果命令 - 使用完整效果函数 */
+static void handle_led_effect(const char *value)
+{
+    if (!value) return;
+    
+    led_stop_current_effect();
+    
+    uint32_t color = g_led_ctrl.current_color;
+    uint8_t brightness = g_led_ctrl.current_brightness;
+    
+    if (strcasecmp(value, "breathing") == 0) {
+        led_effects_clear_manual_mask();  /* 清除手动遮罩 */
+        g_led_ctrl.current_effect = led_effects_breathing(color, 2000, brightness, 0);
+        rt_kprintf("[LED] Effect: breathing\n");
+    }
+    else if (strcasecmp(value, "flowing") == 0) {
+        led_effects_clear_manual_mask();  /* 清除手动遮罩 */
+        g_led_ctrl.current_effect = led_effects_flowing(color, 1000, brightness, 0);
+        rt_kprintf("[LED] Effect: flowing\n");
+    }
+    else if (strcasecmp(value, "blink") == 0) {
+        led_effects_clear_manual_mask();  /* 清除手动遮罩 */
+        g_led_ctrl.current_effect = led_effects_blink(color, 500, brightness, 0);
+        rt_kprintf("[LED] Effect: blink\n");
+    }
+    else if (strcasecmp(value, "rainbow") == 0) {
+        led_effects_clear_manual_mask();  /* 清除手动遮罩 */
+        g_led_ctrl.current_effect = led_effects_rainbow(3000, brightness, 0);
+        rt_kprintf("[LED] Effect: rainbow\n");
+    }
+    else if (strcasecmp(value, "static") == 0) {
+        /* 静态效果设置mask=true，不需要清除 */
+        led_effects_set_all_leds(color);
+        rt_kprintf("[LED] Effect: static\n");
+    }
+    else if (strcasecmp(value, "off") == 0) {
+        led_effects_turn_off_all_leds();
+        rt_kprintf("[LED] Effect: off\n");
+    }
+    else {
+        rt_kprintf("[LED] Unknown effect: %s\n", value);
+    }
+}
+
+/* 处理带参数效果命令 */
+static void handle_led_effect_ex(const char *value)
+{
+    if (!value) return;
+    
+    char value_copy[128];
+    strncpy(value_copy, value, sizeof(value_copy) - 1);
+    value_copy[sizeof(value_copy) - 1] = '\0';
+    
+    char *effect_name = strtok(value_copy, ",");
+    char *color_str = strtok(NULL, ",");
+    char *period_str = strtok(NULL, ",");
+    char *brightness_str = strtok(NULL, ",");
+    
+    if (!effect_name) {
+        rt_kprintf("[LED] Invalid effect_ex format\n");
+        return;
+    }
+    
+    uint32_t color = color_str ? led_parse_hex_color(color_str) : g_led_ctrl.current_color;
+    uint32_t period_ms = period_str ? atoi(period_str) : 2000;
+    uint8_t brightness = brightness_str ? atoi(brightness_str) : g_led_ctrl.current_brightness;
+    
+    if (period_ms < 100) period_ms = 100;
+    if (period_ms > 10000) period_ms = 10000;
+    if (brightness > 255) brightness = 255;
+    
+    led_stop_current_effect();
+    led_effects_clear_manual_mask();  /* 清除手动遮罩，使动态效果能够显示 */
+    g_led_ctrl.current_color = color;
+    g_led_ctrl.current_brightness = brightness;
+    
+    if (strcasecmp(effect_name, "breathing") == 0) {
+        g_led_ctrl.current_effect = led_effects_breathing(color, period_ms, brightness, 0);
+    }
+    else if (strcasecmp(effect_name, "flowing") == 0) {
+        g_led_ctrl.current_effect = led_effects_flowing(color, period_ms, brightness, 0);
+    }
+    else if (strcasecmp(effect_name, "blink") == 0) {
+        g_led_ctrl.current_effect = led_effects_blink(color, period_ms, brightness, 0);
+    }
+    else if (strcasecmp(effect_name, "rainbow") == 0) {
+        g_led_ctrl.current_effect = led_effects_rainbow(period_ms, brightness, 0);
+    }
+    else {
+        rt_kprintf("[LED] Unknown effect: %s\n", effect_name);
+        return;
+    }
+    
+    rt_kprintf("[LED] Effect '%s': color=0x%06X, period=%dms, brightness=%d\n",
+               effect_name, color, (int)period_ms, brightness);
+}
+
+/* 停止LED效果命令 */
+static void handle_led_stop(const char *value)
+{
+    (void)value;
+    led_stop_current_effect();
+    led_effects_turn_off_all_leds();
+    rt_kprintf("[LED] All effects stopped\n");
+}
+
+/* LED控制主处理入口 - 简化版，不依赖缺失函数 */
+static bool handle_led_control(const char *key, const char *value)
+{
+    if (!key || !value) return false;
+    
+    /* 简单检查：尝试调用一个基本函数来判断是否初始化 */
+    if (!g_led_ctrl.initialized) {
+        /* 假设如果led_effects_manager已启动，就可以使用 */
+        if (led_effects_is_started()) {
+            g_led_ctrl.initialized = true;
+        } else {
+            return false;
+        }
+    }
+    
+    if (strcmp(key, "led_brightness") == 0) {
+        handle_led_brightness(value);
+        return true;
+    }
+    if (strcmp(key, "led_color") == 0) {
+        handle_led_color(value);
+        return true;
+    }
+    if (strcmp(key, "led_single") == 0) {
+        handle_led_single(value);
+        return true;
+    }
+    if (strcmp(key, "led_preset") == 0) {
+        handle_led_preset(value);
+        return true;
+    }
+    if (strcmp(key, "led_effect") == 0) {
+        handle_led_effect(value);
+        return true;
+    }
+    if (strcmp(key, "led_effect_ex") == 0) {
+        handle_led_effect_ex(value);
+        return true;
+    }
+    if (strcmp(key, "led_stop") == 0) {
+        handle_led_stop(value);
+        return true;
+    }
+    
+    return false;
+}
+
+/* ==================== LED串口控制扩展 - 结束 ==================== */
+
 static void update_connection_status(void)
 {
     g_serial_status.last_received_tick = rt_tick_get();
@@ -489,7 +783,6 @@ static void serial_watchdog_timer_cb(void *parameter)
             
             g_finsh_data.time_valid = false;
             g_finsh_data.weather_valid = false;
-            g_finsh_data.stock_valid = false;
             g_finsh_data.system_valid = false;
             
             data_manager_reset_all_data();
@@ -762,51 +1055,6 @@ static void handle_weather_data(const char *key, const char *value)
     }
 }
 
-static void handle_stock_data(const char *key, const char *value)
-{
-    if (strcmp(key, "stock_name") == 0) {
-        safe_strcpy(g_finsh_data.stock_name, value, sizeof(g_finsh_data.stock_name));
-        g_finsh_data.stock_valid = true;
-    }
-    else if (strcmp(key, "stock_price") == 0) {
-        g_finsh_data.stock_price = atof(value);
-    }
-    else if (strcmp(key, "stock_change") == 0) {
-        g_finsh_data.stock_change = atof(value);
-    }
-    
-    if (g_finsh_data.stock_valid) {
-        stock_data_t stock = {0};
-        
-        safe_strcpy(stock.name, g_finsh_data.stock_name, sizeof(stock.name));
-        safe_strcpy(stock.symbol, "000001", sizeof(stock.symbol));
-        stock.current_price = g_finsh_data.stock_price;
-        stock.change_value = g_finsh_data.stock_change;
-        
-        if (stock.current_price > 0) {
-            float prev_price = stock.current_price - stock.change_value;
-            if (prev_price > 0) {
-                stock.change_percent = (stock.change_value / prev_price) * 100.0f;
-            }
-        }
-        
-        stock.valid = true;
-        
-        time_t now = time(NULL);
-        if (now != (time_t)-1) {
-            struct tm *tm_info = localtime(&now);
-            if (tm_info) {
-                snprintf(stock.update_time, sizeof(stock.update_time),
-                        "%02d:%02d:%02d", tm_info->tm_hour, tm_info->tm_min, tm_info->tm_sec);
-            }
-        }
-        
-        event_data_stock_t stock_event = { .stock = stock };
-        event_bus_publish(EVENT_DATA_STOCK_UPDATED, &stock_event, sizeof(stock_event),
-                         EVENT_PRIORITY_NORMAL, MODULE_ID_SERIAL_COMM);
-    }
-}
-
 static void handle_system_data(const char *key, const char *value)
 {
     float val = atof(value);
@@ -865,6 +1113,11 @@ static void handle_finsh_key_value(const char *key, const char *value)
 {
     if (!key || !value) return;
     
+    /* LED控制命令 - 优先处理 */
+    if (handle_led_control(key, value)) {
+        return;
+    }
+    
     if (strcmp(key, "time") == 0 || strcmp(key, "date") == 0 || 
         strcmp(key, "weekday") == 0) {
         handle_time_data(key, value);
@@ -873,10 +1126,6 @@ static void handle_finsh_key_value(const char *key, const char *value)
              strcmp(key, "humidity") == 0 || strcmp(key, "pressure") == 0 || 
              strcmp(key, "city_code") == 0) {
         handle_weather_data(key, value);
-    }
-    else if (strcmp(key, "stock_name") == 0 || strcmp(key, "stock_price") == 0 || 
-             strcmp(key, "stock_change") == 0) {
-        handle_stock_data(key, value);
     }
     else if (strcmp(key, "cpu") == 0 || strcmp(key, "cpu_temp") == 0 || 
              strcmp(key, "mem") == 0 || strcmp(key, "gpu") == 0 || 
@@ -912,6 +1161,7 @@ static void process_finsh_command(const char *cmd_str)
     
     int parsed = sscanf(cmd_str, "%15s %31s %127[^\r\n]", command, key, value);
     
+    /* 处理 sys_set 命令 (设置数据) */
     if (parsed >= 3 && strcmp(command, "sys_set") == 0) {
         command[15] = '\0';
         key[31] = '\0';
@@ -923,11 +1173,22 @@ static void process_finsh_command(const char *cmd_str)
         
         g_serial_status.total_commands_received++;
         update_connection_status();
+    }
+    /* 处理 sys_get 命令 (查询数据) */
+    else if (parsed >= 2 && strcmp(command, "sys_get") == 0) {
+        command[15] = '\0';
+        key[31] = '\0';
         
-    } else {
+        handle_sys_get_command(key);
+        
+        g_serial_status.total_commands_received++;
+        update_connection_status();
+    }
+    else {
         g_serial_status.invalid_commands_count++;
     }
 }
+
 
 static rt_err_t serial_rx_callback(rt_device_t dev, rt_size_t size)
 {
@@ -1079,4 +1340,97 @@ int serial_data_handler_deinit(void)
         rx_sem = NULL;
     }
     return RT_EOK;
+}
+
+/**
+ * @brief 发送响应字符串到上位机
+ * @param response 响应字符串
+ * @return 发送的字节数, <0 失败
+ */
+int serial_send_response(const char *response)
+{
+    if (!response || !serial_device) {
+        return -RT_EINVAL;
+    }
+    
+    rt_size_t len = strlen(response);
+    rt_size_t sent = rt_device_write(serial_device, 0, response, len);
+    
+    /* 添加换行符 */
+    if (sent == len) {
+        rt_device_write(serial_device, 0, "\n", 1);
+        sent++;
+    }
+    
+    return (int)sent;
+}
+
+/**
+ * @brief 主动上报固件版本号
+ * @return 0 成功, <0 失败
+ */
+int serial_report_firmware_version(void)
+{
+    if (!serial_device) {
+        return -RT_ERROR;
+    }
+    
+    char version_msg[64];
+    snprintf(version_msg, sizeof(version_msg), 
+             "FW_VERSION:%s", firmware_get_version_string());
+    
+    int ret = serial_send_response(version_msg);
+    
+    rt_kprintf("[Serial] Report version: %s\n", firmware_get_version_string());
+    
+    return (ret > 0) ? 0 : -RT_ERROR;
+}
+
+/**
+ * @brief 获取串口连接状态
+ */
+bool serial_is_connected(void)
+{
+    return g_serial_status.connection_alive;
+}
+
+/**
+ * @brief 处理 sys_get 查询命令
+ * @param key 查询的键名
+ */
+static void handle_sys_get_command(const char *key)
+{
+    if (!key) return;
+    
+    char response[128] = {0};
+    
+    if (strcmp(key, "version") == 0 || strcmp(key, "fw_version") == 0) {
+        /* 查询固件版本 */
+        snprintf(response, sizeof(response), 
+                 "FW_VERSION:%s", firmware_get_version_string());
+    }
+    else if (strcmp(key, "version_type") == 0) {
+        /* 查询版本类型 */
+        snprintf(response, sizeof(response), 
+                 "FW_VERSION_TYPE:%s", firmware_get_version_type());
+    }
+    else if (strcmp(key, "version_code") == 0) {
+        /* 查询版本号整数 */
+        snprintf(response, sizeof(response), 
+                 "FW_VERSION_CODE:0x%06X", (unsigned int)firmware_get_version_code());
+    }
+    else if (strcmp(key, "status") == 0) {
+        /* 查询连接状态 */
+        snprintf(response, sizeof(response), 
+                 "STATUS:cmds=%lu,invalid=%lu,timeout=%lu",
+                 (unsigned long)g_serial_status.total_commands_received,
+                 (unsigned long)g_serial_status.invalid_commands_count,
+                 (unsigned long)g_serial_status.timeout_count);
+    }
+    else {
+        /* 未知查询 */
+        snprintf(response, sizeof(response), "ERROR:unknown_key=%s", key);
+    }
+    
+    serial_send_response(response);
 }

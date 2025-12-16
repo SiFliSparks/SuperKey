@@ -12,12 +12,10 @@ int data_manager_init(void);
 int data_manager_deinit(void);
 
 int data_manager_get_weather(weather_data_t *data);
-int data_manager_get_stock(stock_data_t *data);
 int data_manager_get_system(system_monitor_data_t *data);
 int data_manager_get_forecast(weather_forecast_data_t *data);
 
 int data_manager_update_weather(const weather_data_t *data);
-int data_manager_update_stock(const stock_data_t *data);
 int data_manager_update_system(const system_monitor_data_t *data);
 int data_manager_update_forecast(const weather_forecast_data_t *data);
 
