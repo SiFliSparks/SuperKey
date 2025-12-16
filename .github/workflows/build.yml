@@ -28,6 +28,23 @@ jobs:
       with:
         submodules: recursive
     
+    - name: Extract version from commit message
+      id: version
+      run: |
+        COMMIT_MSG="${{ github.event.head_commit.message }}"
+        echo "Commit message: $COMMIT_MSG"
+        
+        # 检查是否包含 "release v*.*.*" 格式
+        if [[ "$COMMIT_MSG" =~ release[[:space:]]+(v[0-9]+\.[0-9]+\.[0-9]+) ]]; then
+          VERSION="${BASH_REMATCH[1]}"
+          echo "Found version: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "has_version=true" >> $GITHUB_OUTPUT
+        else
+          echo "No version found in commit message"
+          echo "has_version=false" >> $GITHUB_OUTPUT
+        fi
+    
     - name: Setup build environment
       run: |
         cd SiFli-SDK
@@ -49,24 +66,77 @@ jobs:
           app/project/build_*
         retention-days: 7
 
-    - name: Prepare release files
-      if: startsWith(github.ref, 'refs/tags/')
+    - name: Prepare release files (from commit message)
+      if: steps.version.outputs.has_version == 'true'
       run: |
-        mkdir -p release/${{ matrix.target }}
-        cp app/project/build_${{ matrix.target }}_hcpu/bootloader/bootloader.bin release/${{ matrix.target }}/
-        cp app/project/build_${{ matrix.target }}_hcpu/ftab/ftab.bin release/${{ matrix.target }}/
-        cp app/project/build_${{ matrix.target }}_hcpu/main.bin release/${{ matrix.target }}/
-        # cp sftool_param.json release/${{ matrix.target }}/
+        VERSION="${{ steps.version.outputs.version }}"
+        mkdir -p release
         
-        # Create a zip archive for this target
+        # 复制文件到临时目录
+        mkdir -p release/SuperKey_${VERSION}
+        cp app/project/build_${{ matrix.target }}_hcpu/bootloader/bootloader.bin release/SuperKey_${VERSION}/
+        cp app/project/build_${{ matrix.target }}_hcpu/ftab/ftab.bin release/SuperKey_${VERSION}/
+        cp app/project/build_${{ matrix.target }}_hcpu/main.bin release/SuperKey_${VERSION}/
+        # cp sftool_param.json release/SuperKey_${VERSION}/
+        
+        # 创建重命名的 zip 压缩包
         cd release
-        zip -r ${{ matrix.target }}.zip ${{ matrix.target }}/
+        zip -r SuperKey_${VERSION}.zip SuperKey_${VERSION}/
+        echo "Created: SuperKey_${VERSION}.zip"
 
-    - name: Create Release
-      if: startsWith(github.ref, 'refs/tags/')
+    - name: Create tag and release (from commit message)
+      if: steps.version.outputs.has_version == 'true'
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        
+        # 配置 git
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        
+        # 创建并推送 tag（如果不存在）
+        if ! git rev-parse "$VERSION" >/dev/null 2>&1; then
+          git tag -a "$VERSION" -m "Release $VERSION"
+          git push origin "$VERSION"
+          echo "Created and pushed tag: $VERSION"
+        else
+          echo "Tag $VERSION already exists"
+        fi
+
+    - name: Upload release (from commit message)
+      if: steps.version.outputs.has_version == 'true'
       uses: ncipollo/release-action@v1
       with:
-        artifacts: "release/${{ matrix.target }}.zip"
+        artifacts: "release/SuperKey_${{ steps.version.outputs.version }}.zip"
+        generateReleaseNotes: true
+        allowUpdates: true
+        artifactErrorsFailBuild: true
+        name: "Release ${{ steps.version.outputs.version }}"
+        tag: ${{ steps.version.outputs.version }}
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Prepare release files (from tag)
+      if: startsWith(github.ref, 'refs/tags/') && steps.version.outputs.has_version != 'true'
+      run: |
+        VERSION="${{ github.ref_name }}"
+        mkdir -p release
+        
+        # 复制文件到临时目录
+        mkdir -p release/SuperKey_${VERSION}
+        cp app/project/build_${{ matrix.target }}_hcpu/bootloader/bootloader.bin release/SuperKey_${VERSION}/
+        cp app/project/build_${{ matrix.target }}_hcpu/ftab/ftab.bin release/SuperKey_${VERSION}/
+        cp app/project/build_${{ matrix.target }}_hcpu/main.bin release/SuperKey_${VERSION}/
+        # cp sftool_param.json release/SuperKey_${VERSION}/
+        
+        # 创建重命名的 zip 压缩包
+        cd release
+        zip -r SuperKey_${VERSION}.zip SuperKey_${VERSION}/
+        echo "Created: SuperKey_${VERSION}.zip"
+
+    - name: Create Release (from tag)
+      if: startsWith(github.ref, 'refs/tags/') && steps.version.outputs.has_version != 'true'
+      uses: ncipollo/release-action@v1
+      with:
+        artifacts: "release/SuperKey_${{ github.ref_name }}.zip"
         generateReleaseNotes: true
         allowUpdates: true
         artifactErrorsFailBuild: true

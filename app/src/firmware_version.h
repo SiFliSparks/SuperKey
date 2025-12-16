@@ -29,7 +29,7 @@ extern "C" {
  * @brief 修订版本号 (Patch)
  * Bug修复或小改动时递增
  */
-#define FW_VERSION_PATCH        0
+#define FW_VERSION_PATCH        4
 
 /* 辅助宏用于字符串化 */
 #define FW_STRINGIFY(x)         #x
