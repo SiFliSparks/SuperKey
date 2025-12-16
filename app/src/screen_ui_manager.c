@@ -8,6 +8,8 @@
 #include <time.h>
 #include <string.h>
 #include <stdio.h>
+#include "widget_ui.h"
+#include "widget_manager.h"
 /*********************
  *      DEFINES
  *********************/
@@ -42,6 +44,7 @@ static lv_obj_t* create_panel(lv_obj_t *parent, lv_coord_t x_pos);
 static void build_left_muyu_panel(lv_obj_t *parent);
 static void build_middle_tomato_panel(lv_obj_t *parent);
 static void build_right_stopwatch_panel(lv_obj_t *parent);
+static void build_right_widget_panel(lv_obj_t *parent);
 /* 外部字体数据声明 */
 extern const unsigned char xiaozhi_font[];
 extern const int xiaozhi_font_size;
@@ -1509,7 +1512,7 @@ int screen_ui_build_group1(void)
     
     build_left_datetime_panel(g_ui_mgr.handles.g1_left_panel);
     build_middle_weather_panel(g_ui_mgr.handles.g1_middle_panel);
-    /* 右屏暂空 - 原股票面板已移除 */
+    build_right_widget_panel(g_ui_mgr.handles.g1_right_panel);
     
     g_ui_mgr.group1_built = true;
     
@@ -1765,6 +1768,25 @@ int screen_ui_build_l2_tomato(void)
     return 0;
 }
 
+int screen_ui_build_l2_widget_selector(void)
+{
+    if (g_ui_mgr.l2_widget_selector_built) {
+        return 0;
+    }
+    
+    /* 创建L2屏幕 */
+    g_ui_mgr.handles.screen_l2_widget_selector = lv_obj_create(NULL);
+    setup_screen_base_style(g_ui_mgr.handles.screen_l2_widget_selector);
+    
+    /* 使用小工具UI模块构建选择器 */
+    widget_ui_build_selector(g_ui_mgr.handles.screen_l2_widget_selector);
+    
+    g_ui_mgr.l2_widget_selector_built = true;
+    rt_kprintf("[UI] L2 Widget Selector built\n");
+    
+    return 0;
+}
+
 int screen_ui_build_l2_stopwatch(void)
 {
     if (!g_ui_mgr.initialized || g_ui_mgr.l2_stopwatch_built) {
@@ -2004,7 +2026,14 @@ int screen_ui_switch_to_l2(screen_l2_group_t l2_group, screen_l2_page_t l2_page)
             screen_ui_build_l2_shortcut();
             target_screen = g_ui_mgr.handles.screen_l2_shortcut;
             break;
-            
+
+        case SCREEN_L2_WIDGET_SELECTOR_GROUP:
+            if (!g_ui_mgr.l2_widget_selector_built) {
+                screen_ui_build_l2_widget_selector();
+            }
+            target_screen = g_ui_mgr.handles.screen_l2_widget_selector;
+            break;
+
         default:
             return -RT_EINVAL;
     }
@@ -2081,11 +2110,20 @@ int screen_ui_update_time_display(void)
             return 0;
         }
         
+        int ret;
         if (is_showing_tomato_mode()) {
-            return screen_ui_update_time_display_tomato_mode();
+            ret = screen_ui_update_time_display_tomato_mode();
         } else {
-            return screen_ui_update_time_display_normal_mode();
+            ret = screen_ui_update_time_display_normal_mode();
         }
+        
+        /* 更新小工具面板 - 修复：确保每次时间更新时也更新小工具面板 */
+        widget_ui_update_panel();
+        
+        /* 如果是下班倒计时，每秒更新一次 */
+        widget_timer_tick();
+        
+        return ret;
     }
     
     /* L2层级：根据当前L2组判断更新哪个显示 */
@@ -2107,7 +2145,12 @@ int screen_ui_update_time_display(void)
                 break;
         }
     }
-
+    
+    /* 如果在小工具选择器L2页面，更新高亮显示 */
+    if (g_ui_mgr.current_level == SCREEN_LEVEL_2 &&
+        g_ui_mgr.current_l2_group == SCREEN_L2_WIDGET_SELECTOR_GROUP) {
+        widget_ui_update_selector();
+    }
     return 0;
 }
 
@@ -2343,6 +2386,7 @@ int screen_ui_cleanup_all(void)
 
 int screen_ui_manager_deinit(void)
 {
+    widget_ui_cleanup();
     return screen_ui_cleanup_all();
 }
 
@@ -2418,6 +2462,16 @@ static void build_right_stopwatch_panel(lv_obj_t *parent)
     lv_obj_set_style_text_color(g_ui_mgr.handles.group4_stopwatch.stopwatch_hint, lv_color_make(200, 200, 200), 0);
     lv_obj_align(g_ui_mgr.handles.group4_stopwatch.stopwatch_hint, LV_ALIGN_BOTTOM_MID, 0, -5);
 }
+
+static void build_right_widget_panel(lv_obj_t *parent)
+{
+    /* 使用小工具UI模块构建面板 */
+    widget_ui_build_panel(parent);
+    
+    /* 保存句柄用于后续更新 */
+    g_ui_mgr.handles.g1_right_panel = parent;
+}
+
 /**
  * 创建入口图标(通用函数)
  * @param parent 父容器

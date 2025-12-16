@@ -283,7 +283,8 @@ static int process_update_time_message(void)
     if (current_level == SCREEN_LEVEL_2) {
         if (l2_group == SCREEN_L2_TIME_GROUP || 
             l2_group == SCREEN_L2_MUYU_GROUP ||
-            l2_group == SCREEN_L2_TOMATO_GROUP) {
+            l2_group == SCREEN_L2_TOMATO_GROUP ||
+            l2_group == SCREEN_L2_WIDGET_SELECTOR_GROUP) {
             return screen_ui_update_time_display();
         }
         

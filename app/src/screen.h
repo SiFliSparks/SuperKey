@@ -44,6 +44,7 @@ int screen_enter_level2_auto(screen_group_t from_l1_group);
 
 int screen_handle_back_button(void);
 
+int screen_enter_widget_selector(void);
 #ifdef __cplusplus
 } /*extern "C"*/
 #endif

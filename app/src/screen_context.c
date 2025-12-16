@@ -11,6 +11,9 @@
 #include "screen_core.h"
 #include "encoder_controller.h"
 #include "custom_key_storage.h"
+#include "widget_context.h"
+#include "widget_manager.h"
+#include "widget_ui.h"
 
 static rt_tick_t last_muyu_tap_time = 0;
 
@@ -79,7 +82,7 @@ static int screen_l2_muyu_key_handler(int key_idx, button_action_t action, void 
 static int screen_l2_weather_key_handler(int key_idx, button_action_t action, void *user_data);
 static int screen_l2_tomato_key_handler(int key_idx, button_action_t action, void *user_data);
 static int screen_l2_stopwatch_key_handler(int key_idx, button_action_t action, void *user_data);
-
+static int screen_l2_widget_selector_key_handler(int key_idx, button_action_t action, void *user_data);
 /* Encoder事件处理相关 */
 static int l2_media_encoder_event_handler(const event_t *event, void *user_data);
 static bool g_encoder_subscribed = false;
@@ -405,15 +408,26 @@ static key_context_config_t stopwatch_config = {
     .exclusive = false
 };
 
+static key_context_config_t g_l2_widget_selector_config = {
+    .id = KEY_CTX_WIDGET_SELECTOR,
+    .name = "SCREEN_L2_WIDGET_SELECTOR",
+    .handler = screen_l2_widget_selector_key_handler,
+    .user_data = NULL,
+    .priority = 110,
+    .exclusive = false
+};
+
 static int screen_group1_key_handler(int key_idx, button_action_t action, void *user_data)
 {
     (void)user_data;
-    // 修复连击问题：只处理按下事件，忽略抬起事件
+    if (key_idx == 2) {
+        return widget_handle_group1_key(key_idx, action);
+    }
     if (action != BUTTON_PRESSED) {
         return 0;
     }
     
-    // 立即触发对应的LED呼吸灯特效（使用修正后的映射）
+    /* 触发对应的LED呼吸灯特效 */
     trigger_key_led_effect(key_idx, group1_led_bindings, 
                           sizeof(group1_led_bindings)/sizeof(group1_led_bindings[0]));
     
@@ -427,8 +441,7 @@ static int screen_group1_key_handler(int key_idx, button_action_t action, void *
             screen_enter_level2(SCREEN_L2_WEATHER_GROUP, SCREEN_L2_WEATHER_FORECAST);
             break;
             
-        case 2:
-            break;
+        /* case 2 已由小工具系统处理，不在此处理 */
             
         case 3:
             screen_next_group();
@@ -727,6 +740,7 @@ int screen_context_init_all(void)
     
     int ret;
     
+    /* Group 1 上下文 */
     key_context_config_t config1 = {
         .id = KEY_CTX_MENU_NAVIGATION,
         .name = "SCREEN_GROUP_1",
@@ -740,6 +754,7 @@ int screen_context_init_all(void)
         return ret;
     }
     
+    /* Group 2 上下文 */
     key_context_config_t config2 = {
         .id = KEY_CTX_SYSTEM,
         .name = "SCREEN_GROUP_2",
@@ -753,6 +768,7 @@ int screen_context_init_all(void)
         return ret;
     }
     
+    /* Group 3 上下文 */
     key_context_config_t config3 = {
         .id = KEY_CTX_SETTINGS,
         .name = "SCREEN_GROUP_3", 
@@ -766,6 +782,7 @@ int screen_context_init_all(void)
         return ret;
     }
     
+    /* Group 4 上下文 */
     key_context_config_t config4 = {
         .id = KEY_CTX_UTILITIES,
         .name = "SCREEN_GROUP_4",
@@ -779,6 +796,7 @@ int screen_context_init_all(void)
         return ret;
     }
 
+    /* Group 5 上下文 */
     key_context_config_t config5 = {
         .id = KEY_CTX_CUSTOM_KEYS,  
         .name = "SCREEN_GROUP_5",
@@ -792,6 +810,13 @@ int screen_context_init_all(void)
         return ret;
     }
 
+    ret = widget_context_init();
+    if (ret != 0) {
+        rt_kprintf("[ScreenCtx] Widget context init failed: %d\n", ret);
+    } else {
+        rt_kprintf("[ScreenCtx] Widget system initialized\n");
+    }
+
     g_contexts_initialized = true;
     
     return 0;
@@ -803,16 +828,15 @@ int screen_context_deinit_all(void)
         return 0;
     }
     
-    // 先清理背景呼吸灯
     screen_context_cleanup_background_breathing();
     
-    // 清理定时器
+    /* 清理定时器 */
     if (g_delayed_restore_timer) {
         rt_timer_delete(g_delayed_restore_timer);
         g_delayed_restore_timer = NULL;
     }
     
-    // 清理番茄钟完成闪烁定时器
+    /* 清理番茄钟完成闪烁定时器 */
     if (g_tomato_complete_flash_timer) {
         rt_timer_stop(g_tomato_complete_flash_timer);
         rt_timer_delete(g_tomato_complete_flash_timer);
@@ -820,7 +844,9 @@ int screen_context_deinit_all(void)
     }
     g_tomato_flash_count = 0;
     g_tomato_flash_on = false;
+    widget_context_deinit();
     
+    /* 注销所有上下文 */
     key_manager_unregister_context(KEY_CTX_MENU_NAVIGATION);
     key_manager_unregister_context(KEY_CTX_SYSTEM);
     key_manager_unregister_context(KEY_CTX_SETTINGS);
@@ -831,7 +857,11 @@ int screen_context_deinit_all(void)
     key_manager_unregister_context(KEY_CTX_L2_SHORTCUT);
     key_manager_unregister_context(KEY_CTX_UTILITIES);
     key_manager_unregister_context(KEY_CTX_CUSTOM_KEYS);
-    key_manager_unregister_context(KEY_CTX_L2_MUYU);    
+    key_manager_unregister_context(KEY_CTX_L2_MUYU);
+    key_manager_unregister_context(KEY_CTX_L2_TOMATO);
+    key_manager_unregister_context(KEY_CTX_L2_STOPWATCH);
+    key_manager_unregister_context(KEY_CTX_WIDGET_SELECTOR);
+    
     g_contexts_initialized = false;
     return 0;
 }
@@ -931,10 +961,10 @@ int screen_context_activate_for_level2(screen_l2_group_t l2_group)
             
             ret = key_manager_activate_context(KEY_CTX_L2_MEDIA);
             if (ret == 0) {
-                // 设置encoder为音量控制模式
+                /* 设置encoder为音量控制模式 */
                 encoder_controller_set_mode(ENCODER_MODE_VOLUME);
                 
-                // 订阅encoder事件
+                /* 订阅encoder事件 */
                 event_bus_subscribe(
                     EVENT_ENCODER_ROTATED,
                     l2_media_encoder_event_handler,
@@ -943,7 +973,7 @@ int screen_context_activate_for_level2(screen_l2_group_t l2_group)
                 );
                 g_encoder_subscribed = true;
                 
-                // 启动encoder polling
+                /* 启动encoder polling */
                 encoder_controller_start_polling();
             }
             break;
@@ -973,7 +1003,7 @@ int screen_context_activate_for_level2(screen_l2_group_t l2_group)
             break;
 
         case SCREEN_L2_MUYU_GROUP:
-            // 初始化木鱼计数器(创建互斥锁)
+            /* 初始化木鱼计数器(创建互斥锁) */
             screen_context_init_muyu_counter();
             
             if (key_manager_get_context_name(KEY_CTX_L2_MUYU) == "UNREGISTERED") {
@@ -998,6 +1028,7 @@ int screen_context_activate_for_level2(screen_l2_group_t l2_group)
             
             ret = key_manager_activate_context(KEY_CTX_L2_WEATHER);
             break;
+            
         case SCREEN_L2_TOMATO_GROUP:
             screen_context_init_tomato_data();
             
@@ -1010,6 +1041,7 @@ int screen_context_activate_for_level2(screen_l2_group_t l2_group)
             
             ret = key_manager_activate_context(KEY_CTX_L2_TOMATO);
             break;
+            
         case SCREEN_L2_STOPWATCH_GROUP:
             screen_context_init_stopwatch_data();
             
@@ -1021,7 +1053,25 @@ int screen_context_activate_for_level2(screen_l2_group_t l2_group)
             }
             
             ret = key_manager_activate_context(KEY_CTX_L2_STOPWATCH);
-            break;    
+            break;
+        
+        case SCREEN_L2_WIDGET_SELECTOR_GROUP:
+            widget_selector_activate();
+            
+            if (key_manager_get_context_name(KEY_CTX_WIDGET_SELECTOR) == "UNREGISTERED") {
+                ret = key_manager_register_context(&g_l2_widget_selector_config);
+                if (ret != 0) {
+                    rt_kprintf("[ScreenCtx] Failed to register widget selector context\n");
+                    return ret;
+                }
+            }
+            
+            ret = key_manager_activate_context(KEY_CTX_WIDGET_SELECTOR);
+            if (ret == 0) {
+                rt_kprintf("[ScreenCtx] Widget selector activated\n");
+            }
+            break;
+            
         default:
             ret = -RT_EINVAL;
             break;
@@ -1050,6 +1100,8 @@ int screen_context_deactivate_level2(void)
     key_manager_deactivate_context(KEY_CTX_L2_MUYU);
     key_manager_deactivate_context(KEY_CTX_L2_TOMATO);
     key_manager_deactivate_context(KEY_CTX_L2_STOPWATCH);
+    key_manager_deactivate_context(KEY_CTX_WIDGET_SELECTOR);
+    widget_selector_deactivate();
     return 0;
 }
 
@@ -1938,6 +1990,12 @@ int screen_context_handle_stopwatch_reset(void)
     return 0;
 }
 
+static int screen_l2_widget_selector_key_handler(int key_idx, button_action_t action, void *user_data)
+{
+    (void)user_data;
+    return widget_handle_selector_key(key_idx, action);
+}
+
 /* L2秒表按键处理函数 */
 static int screen_l2_stopwatch_key_handler(int key_idx, button_action_t action, void *user_data)
 {
@@ -1995,3 +2053,4 @@ static int screen_l2_stopwatch_key_handler(int key_idx, button_action_t action, 
     
     return 0;
 }
+

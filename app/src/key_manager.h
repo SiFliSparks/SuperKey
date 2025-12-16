@@ -28,6 +28,7 @@ typedef enum {
     KEY_CTX_L2_TOMATO,        /* L2：番茄钟界面 */
     KEY_CTX_L2_STOPWATCH,        /* L2：秒表界面 */
     KEY_CTX_L2_WEATHER,      /* L2：天气扩展界面 */
+    KEY_CTX_WIDGET_SELECTOR,
     KEY_CTX_MAX
 } key_context_id_t;
 

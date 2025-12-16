@@ -19,6 +19,8 @@
 #include <string.h>
 #include "led_effects_manager.h"
 #include "screen_context.h"
+#include "widget_storage.h"
+#include "widget_manager.h"
 /* 系统线程优先级定义 */
 #define MAIN_THREAD_PRIORITY        20  // 主线程优先级最低
 #define EVENT_BUS_THREAD_PRIORITY   8   // 事件总线高优先级
@@ -60,6 +62,10 @@ static int init_sht30_sensor(void) {
         return 0;
     }
     return -1;
+}
+static int init_widget_system(void)
+{
+    return widget_manager_init(); 
 }
 static int init_screen_system(void) { 
     create_triple_screen_display(); 
@@ -147,6 +153,7 @@ static void system_graceful_shutdown(void)
     sht30_controller_deinit();
     serial_data_handler_deinit();
     data_manager_deinit();
+    widget_manager_deinit();
     led_effects_manager_deinit();
     event_bus_deinit();
     
@@ -187,8 +194,9 @@ int main(void)
     ret = system_init_stage(9, "SHT30 Sensor", init_sht30_sensor);
     
 
-    ret = system_init_stage(10, "Screen System", init_screen_system);
+    ret = system_init_stage(10, "Widget System", init_widget_system);
 
+    ret = system_init_stage(11, "Screen System", init_screen_system);
 
     g_system_state.system_ready = true;
     g_system_state.last_health_check = rt_tick_get();
@@ -196,12 +204,8 @@ int main(void)
     while (g_system_state.system_ready) {
 
         uint32_t ms = lv_timer_handler();
-        
-
         screen_process_switch_request();
         screen_context_process_background_restore();
-        
-
         uint32_t sleep_time = (ms > 0 && ms < 100) ? ms : 50;
         rt_thread_mdelay(sleep_time);
     }

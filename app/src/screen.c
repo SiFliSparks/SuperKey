@@ -8,6 +8,8 @@
 #include "event_bus.h"
 #include <rtthread.h>
 #include <time.h>
+#include "widget_manager.h"
+#include "widget_context.h"
 #include <string.h>  
 #include <stdio.h>   
 static bool g_screen_system_initialized = false;
@@ -24,14 +26,33 @@ static int screen_encoder_event_handler(const event_t *event, void *user_data)
         screen_level_t current_level = screen_core_get_current_level();
         
         if (current_level == SCREEN_LEVEL_2) {
-            // 在L2层级时，编码器不进行屏幕组切换
+            screen_l2_group_t l2_group = screen_core_get_current_l2_group();
+            
+            /* 小工具选择器：编码器左右移动选择 */
+            if (l2_group == SCREEN_L2_WIDGET_SELECTOR_GROUP) {
+                int32_t steps = encoder_data->delta;
+                if (steps != 0) {
+                    widget_selector_move(steps > 0 ? 1 : -1);
+                    screen_core_post_update_time();  /* 触发UI刷新 */
+                }
+                return 0;
+            }
+            
+            /* 其他L2页面不处理编码器翻页 */
             return 0;
         }
         
         // 只在L1层级时进行屏幕组切换
         if (current_level == SCREEN_LEVEL_1) {
-            // 处理原始 delta，支持多步翻页
             int32_t steps = encoder_data->delta;
+            
+            /* 检查是否在小工具设置模式 */
+            if (widget_is_in_setting_mode()) {
+                if (steps != 0) {
+                    widget_handle_encoder(steps > 0 ? 1 : -1);
+                }
+                return 0;
+            }
             
             if (steps != 0) {
                 screen_group_t current = screen_core_get_current_group();
@@ -62,7 +83,10 @@ static int screen_encoder_event_handler(const event_t *event, void *user_data)
     return -1;
 }
 
-
+int screen_enter_widget_selector(void)
+{
+    return screen_enter_level2(SCREEN_L2_WIDGET_SELECTOR_GROUP, SCREEN_L2_WIDGET_SELECTOR);
+}
 
 static int screen_data_event_handler(const event_t *event, void *user_data)
 {

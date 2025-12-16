@@ -44,6 +44,7 @@ typedef enum {
     SCREEN_L2_MUYU_GROUP,        /* 赛博木鱼扩展组 - 新增 */
     SCREEN_L2_TOMATO_GROUP,      /* 番茄钟扩展组 - 新增 */
     SCREEN_L2_STOPWATCH_GROUP,     /* 秒表扩展组 - 新增 */
+    SCREEN_L2_WIDGET_SELECTOR_GROUP, // 小工具选择器
     SCREEN_L2_GROUP_MAX
 } screen_l2_group_t;
 
@@ -68,10 +69,11 @@ typedef enum {
     SCREEN_L2_TOMATO_TIMER = 5,  /* 番茄钟计时器 */
     
     /* 秒表组页面 - 新增 */
-    SCREEN_L2_STOPWATCH_TIMER = 6,  /* 图片查看器 */
+    SCREEN_L2_STOPWATCH_TIMER = 6,  /* 秒表 */
 
-    /* 天气预报组页面 - 新增，追加到末尾 */
     SCREEN_L2_WEATHER_FORECAST = 7, /* 天气预报页 */
+
+    SCREEN_L2_WIDGET_SELECTOR = 8, /* 小工具选择器页面 */
     
     /* 其他组页面（预留） */
     SCREEN_L2_PAGE_MAX

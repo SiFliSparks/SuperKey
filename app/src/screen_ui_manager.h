@@ -44,11 +44,16 @@ typedef struct {
         lv_obj_t *sensor_label;
         lv_obj_t *weather_icon;
     } group1_weather;
-    
+
+    struct {
+        lv_obj_t *widget_panel;
+    } group1_widget;
+
     lv_obj_t *g2_left_panel;
     lv_obj_t *g2_middle_panel;
     lv_obj_t *g2_right_panel;
-    
+
+    lv_obj_t *screen_l2_widget_selector;
     struct {
         lv_obj_t *cpu_title;
         lv_obj_t *cpu_usage;      /* 仪表中心百分比标签 */
@@ -213,7 +218,8 @@ typedef struct {
     bool l2_media_built;
     bool l2_web_built;
     bool l2_shortcut_built;
-
+    bool l2_widget_selector_built;
+    
     muyu_data_t muyu_data;
 } screen_ui_manager_t;
 
@@ -225,7 +231,7 @@ int screen_ui_build_group2(void);
 int screen_ui_build_group3(void);
 int screen_ui_build_group5(void);
 int screen_ui_build_group4(void);
-
+int screen_ui_build_l2_widget_selector(void);
 int screen_ui_build_l2_weather(void);
 int screen_ui_build_l2_time(void);
 int screen_ui_build_l2_media(void);
@@ -239,6 +245,7 @@ int screen_ui_switch_to_group(screen_group_t target_group);
 int screen_ui_switch_to_l2(screen_l2_group_t l2_group, screen_l2_page_t l2_page);
 int screen_ui_return_to_l1(screen_group_t l1_group);
 
+int screen_ui_update_widget_panel(void);
 int screen_ui_update_time_display(void);
 int screen_ui_update_tomato_display(void);
 int screen_ui_update_weather_display(const weather_data_t *data);
