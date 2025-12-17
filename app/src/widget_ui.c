@@ -227,7 +227,11 @@ static void update_offwork_display(void)
     
     /* 标题 */
     lv_label_set_text(g_widget_ui.title_label, "下班倒计时");
-    
+    /* 设置字体 */
+    if (g_widget_ui.font_xlarge) {
+        lv_obj_set_style_text_font(g_widget_ui.main_value_label, 
+                                    g_widget_ui.font_large, 0);
+    }    
     if (state.in_setting_mode) {
         /* 设置模式 */
         char buf[32];
