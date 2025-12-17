@@ -19,7 +19,7 @@ export const zhNavbar = navbar([
   },
   {
     link: "/custom/",
-    text: "自定义",
+    text: "更新日志",
     icon: "fa-solid fa-wrench",
   },
 ]);

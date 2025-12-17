@@ -21,9 +21,9 @@ actions:
     icon: lightbulb
     link: ./get-started/
     type: primary
-  - text: 项目介绍
-    icon: sitemap
-    link: ./project-introduction/
+  - text: 更新日志
+    icon: lightbulb
+    link: ./custom/
     type: default
   - text: SDK文档
     icon: book
