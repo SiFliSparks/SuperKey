@@ -44,6 +44,15 @@ jobs:
           echo "No version found in commit message"
           echo "has_version=false" >> $GITHUB_OUTPUT
         fi
+
+    - name: Extract version from tag
+      id: tag_version
+      if: startsWith(github.ref, 'refs/tags/')
+      run: |
+        TAG_VERSION="${{ github.ref_name }}"
+        echo "Tag version: $TAG_VERSION"
+        echo "version=$TAG_VERSION" >> $GITHUB_OUTPUT
+        echo "has_version=true" >> $GITHUB_OUTPUT
     
     - name: Setup build environment
       run: |
@@ -83,6 +92,25 @@ jobs:
         cd release
         zip -r SuperKey_${VERSION}.zip SuperKey_${VERSION}/
         echo "Created: SuperKey_${VERSION}.zip"
+
+    - name: Create fw_verid.json (from commit message)
+      if: steps.version.outputs.has_version == 'true'
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        COMMIT_SHA="${{ github.sha }}"
+        
+        cat > release/fw_verid.json << EOF
+        {
+          "version": "$VERSION",
+          "build_time": "$BUILD_TIME",
+          "commit": "${COMMIT_SHA:0:7}",
+          "target": "${{ matrix.target }}"
+        }
+        EOF
+        
+        echo "[OK] Created fw_verid.json:"
+        cat release/fw_verid.json
 
     - name: Create tag and release (from commit message)
       if: steps.version.outputs.has_version == 'true'
@@ -132,6 +160,25 @@ jobs:
         zip -r SuperKey_${VERSION}.zip SuperKey_${VERSION}/
         echo "Created: SuperKey_${VERSION}.zip"
 
+    - name: Create fw_verid.json (from tag)
+      if: startsWith(github.ref, 'refs/tags/') && steps.version.outputs.has_version != 'true'
+      run: |
+        VERSION="${{ github.ref_name }}"
+        BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        COMMIT_SHA="${{ github.sha }}"
+        
+        cat > release/fw_verid.json << EOF
+        {
+          "version": "$VERSION",
+          "build_time": "$BUILD_TIME",
+          "commit": "${COMMIT_SHA:0:7}",
+          "target": "${{ matrix.target }}"
+        }
+        EOF
+        
+        echo "[OK] Created fw_verid.json:"
+        cat release/fw_verid.json
+
     - name: Create Release (from tag)
       if: startsWith(github.ref, 'refs/tags/') && steps.version.outputs.has_version != 'true'
       uses: ncipollo/release-action@v1
@@ -143,3 +190,59 @@ jobs:
         name: "Release ${{ github.ref_name }}"
         tag: ${{ github.ref_name }}
         token: ${{ secrets.GITHUB_TOKEN }}
+
+    # ============================================================================
+    # 同步到腾讯云 COS
+    # ============================================================================
+    - name: Prepare COS upload directories
+      if: steps.version.outputs.has_version == 'true' || (startsWith(github.ref, 'refs/tags/') && steps.version.outputs.has_version != 'true')
+      run: |
+        # 确定版本号
+        if [[ "${{ steps.version.outputs.has_version }}" == "true" ]]; then
+          VERSION="${{ steps.version.outputs.version }}"
+        else
+          VERSION="${{ github.ref_name }}"
+        fi
+        
+        echo "Preparing COS upload for version: $VERSION"
+        
+        # 创建版本目录（固件压缩包）
+        mkdir -p cos_version_artifacts
+        cp release/SuperKey_${VERSION}.zip cos_version_artifacts/
+        
+        # 创建根目录（只包含 fw_verid.json）
+        mkdir -p cos_root_artifacts
+        cp release/fw_verid.json cos_root_artifacts/
+        
+        echo "[PKG] Version artifacts:"
+        ls -lh cos_version_artifacts/
+        
+        echo "[PKG] Root artifacts (fw_verid.json):"
+        ls -lh cos_root_artifacts/
+        
+        # 保存版本号供后续步骤使用
+        echo "release_version=$VERSION" >> $GITHUB_ENV
+
+    - name: Upload firmware to COS (version directory)
+      if: steps.version.outputs.has_version == 'true' || (startsWith(github.ref, 'refs/tags/') && steps.version.outputs.has_version != 'true')
+      uses: OpenSiFli/SiFliMirrorSync@v1
+      with:
+        secret_id: ${{ secrets.COS_DOCS_SECRET_ID }}
+        secret_key: ${{ secrets.COS_DOCS_SECRET_KEY }}
+        region: ${{ secrets.COS_DOCS_REGION }}
+        bucket: ${{ secrets.COS_DOCS_BUCKET }}
+        prefix: projects/superkey/download/firmware/${{ env.release_version }}/
+        artifacts: cos_version_artifacts/
+        delete_remote: true
+
+    - name: Upload fw_verid.json to COS (root directory)
+      if: steps.version.outputs.has_version == 'true' || (startsWith(github.ref, 'refs/tags/') && steps.version.outputs.has_version != 'true')
+      uses: OpenSiFli/SiFliMirrorSync@v1
+      with:
+        secret_id: ${{ secrets.COS_DOCS_SECRET_ID }}
+        secret_key: ${{ secrets.COS_DOCS_SECRET_KEY }}
+        region: ${{ secrets.COS_DOCS_REGION }}
+        bucket: ${{ secrets.COS_DOCS_BUCKET }}
+        prefix: projects/superkey/download/
+        artifacts: cos_root_artifacts/
+        delete_remote: false  # 不删除其他文件，只覆盖 fw_verid.json
