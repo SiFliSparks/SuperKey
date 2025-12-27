@@ -21,18 +21,27 @@ export default defineUserConfig({
   theme,
 
   head: [
+    // 百度统计
     [
       'script',
       {},
       `
       var _hmt = _hmt || [];
       (function() {
-        var hm = document.createElement(\"script\");
-        hm.src = \"https://hm.baidu.com/hm.js?b12a52eecef6bedee8b8e2d510346a6e\";
-        var s = document.getElementsByTagName(\"script\")[0]; 
+        var hm = document.createElement("script");
+        hm.src = "https://hm.baidu.com/hm.js?b12a52eecef6bedee8b8e2d510346a6e";
+        var s = document.getElementsByTagName("script")[0]; 
         s.parentNode.insertBefore(hm, s);
       })();
       `
+    ],
+    // 不蒜子统计
+    [
+      'script',
+      {
+        async: true,
+        src: '//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js'
+      }
     ]
   ],
   // Enable it with pwa

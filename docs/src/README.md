@@ -12,9 +12,14 @@ bgImageStyle:
   background-position: center
   background-repeat: no-repeat
   opacity: 0.5
-heroText: SuperKey百科全书
-tagline: 基于SF32平台 让交互随心而动
+heroText: SuperKey-可视化宏键盘
+tagline:  方寸之间 · 随心而动
 
+heroImage: /assets/image/logo.svg
+heroImageDark: /assets/image/logo-dark.svg
+heroImageStyle:
+  width: 130px
+  height: 130px
 heroAlt: SuperKey - 基于SF32的可视化宏键盘平台
 actions:
   - text: 快速入门
@@ -22,7 +27,7 @@ actions:
     link: ./get-started/
     type: primary
   - text: 更新日志
-    icon: lightbulb
+    icon: clock-rotate-left
     link: ./custom/
     type: default
   - text: SDK文档
@@ -35,10 +40,40 @@ actions:
     type: default
 
 highlights:
-  - header: SF32芯片核心
-    description: 基于先进的SF32芯片平台，为SuperKey提供强大的图形能力和低功耗优势。采用ARM Cortex-M33内核，集成丰富外设，满足多种应用场景。
-    bgImage: https://theme-hope-assets.vuejs.press/bg/3-light.svg
-    bgImageDark: https://theme-hope-assets.vuejs.press/bg/3-dark.svg
+  - header: 关于SuperKey
+    description: 基于 RT-Thread 和 LVGL 图形库的嵌入式多功能桌面控制器项目，运行在 SF32LB52。上位机基于flet开发，可运行在Windows和MAC。硬件集成了三 LCD 屏幕显示、USB HID 键盘模拟、旋转编码器、RGB LED 灯效、温湿度传感器等功能，通过物理按键和旋钮实现丰富的交互操作。
+    image: /assets/image/SuperKeyUI.png
+    bgImage: https://theme-hope-assets.vuejs.press/bg/2-light.svg
+    bgImageDark: https://theme-hope-assets.vuejs.press/bg/2-dark.svg
+    highlights:
+      - title: 屏幕显示系统
+        icon: display
+        details: 采用分层模块化设计，页面第一层级使用编码器切换，针对第一层级的功能扩展，通过按键进入第二层级
+
+      - title: 按键与输入系统
+        icon: keyboard
+        details: 采用上下文切换机制，不同界面组激活不同的按键处理上下文，实现一键多用、灵活切换。
+
+      - title: USB HID 功能
+        icon: plug
+        details: 支持预设快捷键、模拟键盘和自定义按键映射与存储。
+
+      - title: LED 效果系统
+        icon: palette
+        details: RGB LED 效果系统支持呼吸灯、流水灯、彩虹渐变、波浪、闪烁等多种动态效果；内置 10+ 预设颜色和全局亮度调节，为按键操作提供即时视觉反馈，并可作为背景氛围灯营造桌面氛围。
+
+      - title: 小工具系统
+        icon: toolbox
+        details: 实现多种小工具，通过按键逻辑可绑定到首页，快速开始使用。
+
+      - title: 配套上位机SuperKeyHUB
+        icon: desktop
+        details: 基于python+flet，提供硬件监控、API信息中转，SuperKey设置和固件升级等功能
+
+  - header: 页面与功能
+    description: 5组界面 + 双层层级架构的分层模块化设计，页面第一层级使用编码器切换，针对第一层级的功能扩展，通过按键进入第二层级
+    bgImage: https://theme-hope-assets.vuejs.press/bg/2-light.svg
+    bgImageDark: https://theme-hope-assets.vuejs.press/bg/2-dark.svg
     bgImageStyle:
       background-size: cover
       background-position: center
@@ -46,82 +81,56 @@ highlights:
       background-attachment: fixed
       min-height: 600px
     highlights:
-      - title: 高性能处理器
-        icon: microchip
-        details: ARM Cortex-M33内核，集成高性能2D/2.5D图形引擎，人工智能神经网络加速器，双模蓝牙5.3，以及音频CODEC，提供卓越的超低功耗人工智能物联网（AIoT）场景体验。
+      - title: 时间/天气/小工具
+        icon: cloud-sun
+        details: 年月日周显示与全屏时钟页面，实时天气与天气预报，更有多种实用小工具等你探索。
 
-      - title: 丰富外设接口
-        icon: plug
-        details: 集成UART、SPI、I2C、ADC、PWM等多种外设，GPIO资源丰富，满足各种应用场景。
+      - title: 系统监控
+        icon: chart-line
+        details: 精准采集电脑CPU\GPU\内存\网络数据，系统运行情况一目了然。
 
-      - title: 超低功耗设计
-        icon: battery-half
-        details: 多种低功耗模式，CoreMark 功耗效率：低至23uA/MHz @3.8V，内置高效率Buck及低功耗LDO，休眠功耗仅2uA，延长设备续航时间。
+      - title: 常用快捷按键
+        icon: hand-pointer
+        details: 媒体控制、网页控制、文本快捷键，复杂操作一触即达。
 
-      - title: 硬件级安全
-        icon: shield-halved
-        details: 集成AES 加速器、HASH 加速器、CRC加速器等硬件加密引擎，保护用户数据安全。
-
-      - title: 完善工具链
+      - title: 实用工具
         icon: screwdriver-wrench
-        details: 提供完整的SDK和开发工具，支持多种IDE环境，快速落地你的任何灵感。
+        details: 赛博木鱼、番茄钟、秒表，更多实用工具持续更新中。
 
-  - header: ⚡ 易于开发部署
-    description: 提供完整的开发框架和工具链，从硬件设计到软件开发，从本地调试到云端部署，全方位支持开发者快速构建智能语音应用。
-    image: /assets/image/development.svg
-    bgImage: https://theme-hope-assets.vuejs.press/bg/9-light.svg
-    bgImageDark: https://theme-hope-assets.vuejs.press/bg/9-dark.svg
+      - title: 自定义按键
+        icon: sliders
+        details: 提供完整的键盘按键自定义功能，更有多达四组宏按键可供自由定义。
+
+      - title: 个性化支持
+        icon: arrow-up-from-bracket
+        details: 提供自定义图片背景、自定义音效等多种个性化选择，同时可自行编译修改开源固件，千人千面，让你的灵感快速实现。
+
+  - header: SuperKeyHUB
+    description: 基于 Flet 框架开发的跨平台桌面应用程序，作为SuperKey的配套上位机软件。实现硬件监控数据推送、天气信息同步、自定义按键配置、LED 灯效控制及固件升级等功能，支持 Windows、macOS 和 Linux 平台。
+    image: /assets/image/superkeyhub.png
+    bgImage: https://theme-hope-assets.vuejs.press/bg/2-light.svg
+    bgImageDark: https://theme-hope-assets.vuejs.press/bg/2-dark.svg
     highlights:
-      - title: 模块化架构
-        icon: cubes
-        details: 采用分层模块化设计，支持灵活配置和自定义扩展
+      - title: 硬件监控与天气服务
+        icon: gauge-high
+        details: 跨平台适配的CPU/GPU/内存/磁盘/网络实时采集，和风天气 API，200+城市，三日预报。
 
-      - title: 丰富的SDK工具包
-        icon: code
-        details: 提供完整的SDK和API，详细的接口文档，简化开发流程
+      - title: 自定义按键配置
+        icon: keyboard
+        details: 3个可编程键，预设快捷键模板，可使用键盘直接录入，多达四组按键宏连续执行。
 
-      - title: 海量例程代码
-        icon: file-code
-        details: 包含100+示例代码和完整应用案例，覆盖各种使用场景，快速上手开发
+      - title: 配置管理
+        icon: floppy-disk
+        details: 数据本地持久化，配置仅需一次。
 
-      - title: 云端服务集成
-        icon: cloud
-        details: 支持与云端服务主流平台集成，实现端云协同的智能服务
+      - title: 系统升级
+        icon: arrow-up-from-bracket
+        details: 支持系统版本检测与升级，一键固件烧录。
 
-      - title: OTA无线升级
-        icon: download
-        details: 支持固件和AI模型的空中升级，远程更新设备功能，降低维护成本
-
-      - title: 专业调试工具
-        icon: bug
-        details: 提供性能分析、日志监控、错误诊断等调试工具，提升开发效率
-
-  - header: 🌟 开源生态社区
-    description: 完全开源的解决方案，拥有活跃的开发者社区和持续的技术创新。我们致力于构建开放、协作、共赢的智能语音生态系统。
-    image: /assets/image/community.svg
-    bgImage: https://theme-hope-assets.vuejs.press/bg/1-light.svg
-    bgImageDark: https://theme-hope-assets.vuejs.press/bg/1-dark.svg
-    highlights:
-      - title: MIT开源许可
-        icon: certificate
-        details: 基于MIT许可证完全开源，支持商业和非商业应用，无版权限制
-
-      - title: 活跃开发社区
-        icon: users
-        details: 完善的开发者社区，官方24小时技术支持，快速响应问题和需求
-
-      - title: 持续版本更新
-        icon: arrows-rotate
-        details: 定期发布新版本，持续优化性能和增加新功能，保持技术领先
-
-      - title: 丰富技术资源
-        icon: blog
-        details: 详细的技术文档、视频教程、最佳实践分享，助力开发者快速成长
-
-      - title: 开放贡献机制
-        icon: handshake
-        details: 欢迎全球开发者贡献代码，提供完善的贡献指南
+      - title: 设备链接
+        icon: link
+        details: 自动扫描设备、设备一键连接、意外断连后自动重连。
 
 copyright: false
-footer: MIT Licensed | Copyright © 2025 思澈科技（南京）有限公司
+footer: 'Apache-2.0 Licensed | Copyright © 2025 思澈科技（南京）有限公司 | <span id="busuanzi_container_site_pv">总访问量 <span id="busuanzi_value_site_pv"></span> 次</span> | <span id="busuanzi_container_site_uv">访客数 <span id="busuanzi_value_site_uv"></span> 人</span>'
 ---

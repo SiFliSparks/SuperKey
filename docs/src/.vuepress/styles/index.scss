@@ -7,14 +7,14 @@
 .vp-navbar {
   transition: all 0.3s ease;
   &.transparent {
-    background: rgba(255, 255, 255, 0.8) !important;
+    background: rgba(255, 255, 255, 0.8);
     backdrop-filter: blur(10px);
     border-bottom: 1px solid rgba(255, 255, 255, 0.2);
   }
 }
 
 [data-theme="dark"] .vp-navbar.transparent {
-  background: rgba(0, 0, 0, 0.8) !important;
+  background: rgba(0, 0, 0, 0.8);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
@@ -28,13 +28,6 @@
   align-items: center;
   padding-top: var(--navbar-height, 4rem);
   box-sizing: border-box;
-  
-  .vp-hero-info {
-    text-align: center;
-    max-width: 1200px;
-    width: 100%;
-    padding: 0 2rem;
-  }
   
   .vp-hero-image {
     margin: 2rem auto;
@@ -53,11 +46,12 @@
   }
   
   .vp-hero-title {
-    background: linear-gradient(45deg, var(--theme-color), var(--theme-color-light));
-    background-size: 200% 200%;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    // 移除渐变，使用纯色
+    background: none;
+    -webkit-background-clip: unset;
+    -webkit-text-fill-color: currentColor;
+    background-clip: unset;
+    color: var(--theme-color);  // 使用主题色，可改为其他颜色如 #333
     font-size: 3rem;
     font-weight: 700;
     margin: 1.5rem 0;
@@ -65,12 +59,14 @@
     
   }
   
+  // tagline 副标题阴影
   .vp-hero-description {
     font-size: 1.25rem;
     margin: 1.5rem auto;
     max-width: 600px;
     line-height: 1.6;
     opacity: 0.9;
+    text-shadow: 1px 2px 4px rgba(0, 0, 0, 0.2);
   }
   
   .vp-hero-actions {
@@ -181,4 +177,137 @@
 }
 .vp-hero + .vp-highlight {
   margin-top: 0;
+}
+
+// ========================================
+// 放大 Highlights 区块中的图片
+// ========================================
+
+// 直接选择 img.vp-highlight-image
+// 无内联样式，但主题可能有默认 max-width，保留 !important
+img.vp-highlight-image {
+  max-width: none !important;
+  width: 500px !important;
+  height: auto;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  
+  // 阴影效果
+  border-radius: 12px;
+  box-shadow: 
+    0 10px 30px rgba(0, 0, 0, 0.15),
+    0 5px 15px rgba(0, 0, 0, 0.1);
+  
+  &:hover {
+    transform: scale(1.05);
+    box-shadow: 
+      0 15px 40px rgba(0, 0, 0, 0.2),
+      0 8px 20px rgba(0, 0, 0, 0.15);
+  }
+}
+
+// 暗色模式下阴影更深
+[data-theme="dark"] {
+  img.vp-highlight-image {
+    box-shadow: 
+      0 10px 30px rgba(0, 0, 0, 0.4),
+      0 5px 15px rgba(0, 0, 0, 0.3);
+    
+    &:hover {
+      box-shadow: 
+        0 15px 40px rgba(0, 0, 0, 0.5),
+        0 8px 20px rgba(0, 0, 0, 0.4);
+    }
+  }
+}
+
+// 响应式适配 - 小屏幕
+@media (max-width: 768px) {
+  img.vp-highlight-image {
+    width: 100% !important;
+    max-width: 350px !important;
+  }
+}
+
+// 响应式适配 - 大屏幕
+@media (min-width: 1200px) {
+  img.vp-highlight-image {
+    width: 600px !important;
+  }
+}
+
+// ========================================
+// Hero 副标题样式 (tagline)
+// ========================================
+
+// 移除单独的底色
+#main-description {
+  color: #333;
+  opacity: 1 !important;
+  text-shadow: 1px 2px 4px rgba(0, 0, 0, 0.15);
+  font-size: 1.25rem;
+  font-weight: 500;
+}
+
+// 暗色模式
+[data-theme="dark"] {
+  #main-description {
+    color: #e0e0e0;
+    text-shadow: 1px 2px 4px rgba(0, 0, 0, 0.3);
+  }
+}
+
+// ========================================
+// Hero 整体内容大框
+// ========================================
+
+// 包裹所有 Hero 内容的容器（包括 Logo）
+.vp-hero-info {
+  background-color: rgba(255, 255, 255, 0.75) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  border-radius: 24px !important;
+  box-shadow: 
+    0 10px 40px rgba(0, 0, 0, 0.1),
+    0 5px 20px rgba(0, 0, 0, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+  
+  padding: 2.5rem 3rem !important;   // 内边距：上下 2.5rem，左右 3rem
+}
+
+// 移除 .vp-hero-infos 的单独背景（现在由父元素统一处理）
+.vp-hero-infos {
+  background: none !important;
+  backdrop-filter: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+// 暗色模式
+[data-theme="dark"] {
+  .vp-hero-info {
+    background-color: rgba(0, 0, 0, 0.6) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    box-shadow: 
+      0 10px 40px rgba(0, 0, 0, 0.3),
+      0 5px 20px rgba(0, 0, 0, 0.2) !important;
+  }
+}
+
+// 响应式 - 小屏幕
+@media (max-width: 768px) {
+  .vp-hero-info {
+    padding: 1.5rem 1.5rem !important;
+    border-radius: 20px !important;
+    max-width: 95% !important;
+  }
+}
+
+// 响应式 - 大屏幕
+@media (min-width: 1200px) {
+  .vp-hero-info {
+    padding: 3rem 4rem !important;
+    max-width: 1000px !important;
+  }
 }
