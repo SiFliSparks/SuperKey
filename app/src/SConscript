@@ -8,7 +8,16 @@ cwd = GetCurrentDir() # get current dir path
 
 src=Glob('*.c')
 inc+= [cwd+'/examples']
-
+src = src + Glob('./custom/*.c') 
+src = src + Glob('./device/*.c')  
+src = src + Glob('./font/*.c')
+src = src + Glob('./fs/*.c') 
+src = src + Glob('./manager/*.c') 
+src = src + Glob('./middleware/*.c') 
+src = src + Glob('./mp3/*.c') 
+src = src + Glob('./screen/*.c') 
+src = src + Glob('./version/*.c')
+src = src + Glob('./widget/*.c') 
 # check if .h or .hpp files exsit
 def check_h_hpp_exsit(path):
     file_dirs = os.listdir(path)

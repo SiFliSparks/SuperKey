@@ -3,24 +3,26 @@
 #include "bf0_hal.h"
 #include "drv_io.h"
 #include "lv_ex_data.h"
-#include "screen.h"
+#include "screen/screen.h"
 #include "littlevgl2rtt.h"
-#include "event_bus.h"
-#include "app_controller.h"
-#include "hid_device.h"
-#include "encoder_controller.h"
-#include "key_manager.h"
-#include "sht30_controller.h"
-#include "data_manager.h" 
-#include "serial_data_handler.h"
+#include "middleware/event_bus.h"
+#include "middleware/app_controller.h"
+#include "device/hid_device.h"
+#include "device/encoder_controller.h"
+#include "manager/key_manager.h"
+#include "device/sht30_controller.h"
+#include "manager/data_manager.h" 
+#include "device/serial_data_handler.h"
 #include "drv_rgbled.h"
 #include <board.h>
 #include <stdlib.h>
 #include <string.h>
-#include "led_effects_manager.h"
-#include "screen_context.h"
-#include "widget_storage.h"
-#include "widget_manager.h"
+#include "manager/led_effects_manager.h"
+#include "screen/screen_context.h"
+#include "widget/widget_storage.h"
+#include "widget/widget_manager.h"
+#include "mp3/mp3_player_controller.h"
+#include "device/sdcard_monitor.h"
 /* 系统线程优先级定义 */
 #define MAIN_THREAD_PRIORITY        20  // 主线程优先级最低
 #define EVENT_BUS_THREAD_PRIORITY   8   // 事件总线高优先级
@@ -193,7 +195,9 @@ int main(void)
 
     ret = system_init_stage(9, "SHT30 Sensor", init_sht30_sensor);
     
-
+    mp3_player_init();
+    sdcard_monitor_init();
+    
     ret = system_init_stage(10, "Widget System", init_widget_system);
 
     ret = system_init_stage(11, "Screen System", init_screen_system);
