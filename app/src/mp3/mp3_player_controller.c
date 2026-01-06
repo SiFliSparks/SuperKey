@@ -156,14 +156,12 @@ static int audio_play_file(const char *filepath)
     /* 获取歌曲信息(总时长) */
     mp3_info_t mp3_info = {0};
     if (mp3ctrl_getinfo(full_path, &mp3_info) == 0) {
-        /* 根据声道数修正总时长 */
-        if (mp3_info.channels >= 2) {
-            g_mp3_player.total_duration_sec = mp3_info.total_time_in_seconds / 2;
-        } else {
-            g_mp3_player.total_duration_sec = mp3_info.total_time_in_seconds;
-        }
+        g_mp3_player.total_duration_sec = mp3_info.total_time_in_seconds;
+        rt_kprintf("[MP3_AUDIO] Duration: %d sec (channels=%d, samplerate=%d)\n",
+                   mp3_info.total_time_in_seconds, mp3_info.channels, mp3_info.samplerate);
     } else {
         g_mp3_player.total_duration_sec = 0;
+        rt_kprintf("[MP3_AUDIO] Failed to get song info\n");
     }
     
     /* 重置当前播放位置 */

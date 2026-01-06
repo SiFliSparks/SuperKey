@@ -91,6 +91,20 @@ typedef struct {
 static mp3_ui_handles_t g_mp3_ui = {0};
 static bool g_ui_built = false;
 
+/* UI 数据缓存 - 避免重复设置相同值导致不必要的重绘和动画重置 */
+typedef struct {
+    char song_name[64];         /* 歌名 */
+    char duration[20];          /* 时长显示 "00:00/00:00" */
+    char song_index[16];        /* 歌曲索引 "1/10" */
+    char volume[8];             /* 音量 */
+    uint8_t progress;           /* 进度百分比 */
+    mp3_ui_state_t state;       /* 播放状态 */
+    mp3_encoder_mode_t encoder_mode;  /* 编码器模式 */
+    bool initialized;           /* 缓存是否已初始化 */
+} mp3_ui_cache_t;
+
+static mp3_ui_cache_t g_ui_cache = {0};
+
 /* 外部样式管理器 - 在 screen_ui_manager.c 中定义 */
 extern screen_ui_manager_t g_ui_mgr;
 
@@ -167,14 +181,22 @@ static void build_left_panel(lv_obj_t *parent)
  */
 static void build_center_panel(lv_obj_t *parent)
 {
-    /* 歌曲名称 - 使用 SCROLL_CIRCULAR 模式实现循环滚动 */
+    /* 
+     * 歌曲名称滚动优化方案:
+     * 1. 使用 SCROLL_CIRCULAR 循环滚动
+     * 2. 较长的 anim_time 使滚动更平滑
+     * 3. 配合缓存机制避免动画重置
+     */
     g_mp3_ui.label_song_name = lv_label_create(parent);
     lv_label_set_text(g_mp3_ui.label_song_name, "无音乐");
     lv_obj_set_width(g_mp3_ui.label_song_name, SCREEN_WIDTH - 10);
     lv_label_set_long_mode(g_mp3_ui.label_song_name, LV_LABEL_LONG_SCROLL_CIRCULAR);
     lv_obj_add_style(g_mp3_ui.label_song_name, &g_ui_mgr.handles.style_medium, 0);
     lv_obj_set_style_text_color(g_mp3_ui.label_song_name, COLOR_TEXT, 0);
-    lv_obj_set_style_anim_time(g_mp3_ui.label_song_name, 5000, 0);  /* 5秒完成一次滚动 */
+    
+    /* 滚动时间: 10秒完成一个周期，较慢的速度更平滑易读 */
+    lv_obj_set_style_anim_time(g_mp3_ui.label_song_name, 10000, 0);
+    
     lv_obj_align(g_mp3_ui.label_song_name, LV_ALIGN_TOP_MID, 0, 8);
     
     /* 进度条 - 在歌曲名下方 */
@@ -263,6 +285,9 @@ int mp3_screen_ui_build(lv_obj_t *parent)
     
     rt_kprintf("[MP3_UI] Building UI...\n");
     
+    /* 清空UI缓存，确保首次更新能正确显示所有元素 */
+    rt_memset(&g_ui_cache, 0, sizeof(g_ui_cache));
+    
     /* 保存屏幕引用 */
     g_mp3_ui.screen = parent;
     
@@ -288,6 +313,9 @@ int mp3_screen_ui_build(lv_obj_t *parent)
 /**
  * @brief 更新 MP3 页面 UI
  * @return 0 成功
+ * 
+ * 优化: 使用缓存机制，只在数据变化时才更新UI组件，
+ * 避免频繁调用 lv_label_set_text 导致滚动动画重置和不必要的重绘
  */
 int mp3_screen_ui_update(void)
 {
@@ -303,23 +331,50 @@ int mp3_screen_ui_update(void)
     /* 获取当前编码器模式 */
     mp3_encoder_mode_t encoder_mode = mp3_screen_context_get_encoder_mode();
     
-    /* 更新歌曲名 */
+    /* 1. 更新歌曲名 - 只在歌名变化时才更新，避免重置滚动动画 */
     if (is_obj_valid(g_mp3_ui.label_song_name)) {
+        const char *new_song_name;
+        
         if (data.sd_card_ready && data.total_songs > 0) {
-            lv_label_set_text(g_mp3_ui.label_song_name, data.current_song);
+            new_song_name = data.current_song;
         } else if (!data.sd_card_ready) {
-            lv_label_set_text(g_mp3_ui.label_song_name, "SD卡未就绪");
+            new_song_name = "SD卡未就绪";
         } else {
-            lv_label_set_text(g_mp3_ui.label_song_name, "无音乐文件");
+            new_song_name = "无音乐文件";
+        }
+        
+        if (!g_ui_cache.initialized || rt_strcmp(g_ui_cache.song_name, new_song_name) != 0) {
+            rt_strncpy(g_ui_cache.song_name, new_song_name, sizeof(g_ui_cache.song_name) - 1);
+            g_ui_cache.song_name[sizeof(g_ui_cache.song_name) - 1] = '\0';
+            
+            /* 
+             * 智能滚动优化:
+             * - 短文本 (<=12字符) 不需要滚动，使用 CLIP 模式
+             * - 长文本才启用滚动，减少不必要的动画开销
+             */
+            size_t text_len = rt_strlen(g_ui_cache.song_name);
+            if (text_len <= 12) {
+                /* 短文本：禁用滚动 */
+                lv_label_set_long_mode(g_mp3_ui.label_song_name, LV_LABEL_LONG_CLIP);
+            } else {
+                /* 长文本：启用循环滚动 */
+                lv_label_set_long_mode(g_mp3_ui.label_song_name, LV_LABEL_LONG_SCROLL_CIRCULAR);
+            }
+            
+            /* 使用缓存中的静态字符串，避免LVGL内部再次复制 */
+            lv_label_set_text_static(g_mp3_ui.label_song_name, g_ui_cache.song_name);
         }
     }
     
-    /* 更新进度条 */
+    /* 2. 更新进度条 - 只在进度变化时更新 */
     if (is_obj_valid(g_mp3_ui.progress_bar)) {
-        lv_bar_set_value(g_mp3_ui.progress_bar, data.progress_percent, LV_ANIM_OFF);
+        if (!g_ui_cache.initialized || g_ui_cache.progress != data.progress_percent) {
+            g_ui_cache.progress = data.progress_percent;
+            lv_bar_set_value(g_mp3_ui.progress_bar, data.progress_percent, LV_ANIM_OFF);
+        }
     }
     
-    /* 更新播放时长 */
+    /* 3. 更新播放时长 - 只在时间字符串变化时更新 */
     if (is_obj_valid(g_mp3_ui.label_duration)) {
         char current_time[8];
         char total_time[8];
@@ -328,73 +383,99 @@ int mp3_screen_ui_update(void)
         format_time(data.current_pos_sec, current_time, sizeof(current_time));
         format_time(data.total_duration_sec, total_time, sizeof(total_time));
         rt_snprintf(duration_buf, sizeof(duration_buf), "%s/%s", current_time, total_time);
-        lv_label_set_text(g_mp3_ui.label_duration, duration_buf);
+        
+        if (!g_ui_cache.initialized || rt_strcmp(g_ui_cache.duration, duration_buf) != 0) {
+            rt_strncpy(g_ui_cache.duration, duration_buf, sizeof(g_ui_cache.duration) - 1);
+            g_ui_cache.duration[sizeof(g_ui_cache.duration) - 1] = '\0';
+            lv_label_set_text_static(g_mp3_ui.label_duration, g_ui_cache.duration);
+        }
     }
     
-    /* 更新歌曲索引 - 现在在左面板 */
+    /* 4. 更新歌曲索引 - 只在索引变化时更新 */
     if (is_obj_valid(g_mp3_ui.label_song_index)) {
         char index_buf[16];
-        rt_snprintf(index_buf, sizeof(index_buf), "%d/%d", 
-                    data.current_index, data.total_songs);
-        lv_label_set_text(g_mp3_ui.label_song_index, index_buf);
-    }
-    
-    /* 更新播放状态 */
-    if (is_obj_valid(g_mp3_ui.label_state)) {
-        const char *state_text;
-        lv_color_t state_color;
+        rt_snprintf(index_buf, sizeof(index_buf), "%d/%d", data.current_index, data.total_songs);
         
-        switch (data.state) {
-            case MP3_UI_STATE_PLAYING:
-                state_text = "播放中";
-                state_color = COLOR_PLAYING;
-                break;
-            case MP3_UI_STATE_PAUSED:
-                state_text = "已暂停";
-                state_color = COLOR_PAUSED;
-                break;
-            case MP3_UI_STATE_ERROR:
-                state_text = "错误";
-                state_color = COLOR_ERROR;
-                break;
-            default:
-                state_text = "停止";
-                state_color = COLOR_IDLE;
-                break;
+        if (!g_ui_cache.initialized || rt_strcmp(g_ui_cache.song_index, index_buf) != 0) {
+            rt_strncpy(g_ui_cache.song_index, index_buf, sizeof(g_ui_cache.song_index) - 1);
+            g_ui_cache.song_index[sizeof(g_ui_cache.song_index) - 1] = '\0';
+            lv_label_set_text_static(g_mp3_ui.label_song_index, g_ui_cache.song_index);
         }
-        
-        lv_label_set_text(g_mp3_ui.label_state, state_text);
-        lv_obj_set_style_text_color(g_mp3_ui.label_state, state_color, 0);
     }
     
-    /* 更新音量 */
+    /* 5. 更新播放状态 - 只在状态变化时更新 */
+    if (is_obj_valid(g_mp3_ui.label_state)) {
+        if (!g_ui_cache.initialized || g_ui_cache.state != data.state) {
+            g_ui_cache.state = data.state;
+            
+            const char *state_text;
+            lv_color_t state_color;
+            
+            switch (data.state) {
+                case MP3_UI_STATE_PLAYING:
+                    state_text = "播放中";
+                    state_color = COLOR_PLAYING;
+                    break;
+                case MP3_UI_STATE_PAUSED:
+                    state_text = "已暂停";
+                    state_color = COLOR_PAUSED;
+                    break;
+                case MP3_UI_STATE_ERROR:
+                    state_text = "错误";
+                    state_color = COLOR_ERROR;
+                    break;
+                default:
+                    state_text = "停止";
+                    state_color = COLOR_IDLE;
+                    break;
+            }
+            
+            lv_label_set_text(g_mp3_ui.label_state, state_text);
+            lv_obj_set_style_text_color(g_mp3_ui.label_state, state_color, 0);
+        }
+    }
+    
+    /* 6. 更新音量 - 只在音量变化时更新 */
     if (is_obj_valid(g_mp3_ui.label_vol_value)) {
         char vol_buf[8];
         rt_snprintf(vol_buf, sizeof(vol_buf), "%d", data.volume);
-        lv_label_set_text(g_mp3_ui.label_vol_value, vol_buf);
-    }
-    
-    /* 更新切歌模式状态 - 底部位置 */
-    if (is_obj_valid(g_mp3_ui.label_track_mode)) {
-        if (encoder_mode == MP3_ENCODER_MODE_TRACK) {
-            lv_label_set_text(g_mp3_ui.label_track_mode, "[ 旋转以调节 ]");
-            lv_obj_set_style_text_color(g_mp3_ui.label_track_mode, COLOR_MODE_ACTIVE, 0);
-        } else {
-            lv_label_set_text(g_mp3_ui.label_track_mode, "[ 未激活 ]");
-            lv_obj_set_style_text_color(g_mp3_ui.label_track_mode, COLOR_MODE_INACTIVE, 0);
+        
+        if (!g_ui_cache.initialized || rt_strcmp(g_ui_cache.volume, vol_buf) != 0) {
+            rt_strncpy(g_ui_cache.volume, vol_buf, sizeof(g_ui_cache.volume) - 1);
+            g_ui_cache.volume[sizeof(g_ui_cache.volume) - 1] = '\0';
+            lv_label_set_text_static(g_mp3_ui.label_vol_value, g_ui_cache.volume);
         }
     }
     
-    /* 更新音量模式状态 - 底部位置 */
-    if (is_obj_valid(g_mp3_ui.label_vol_mode)) {
-        if (encoder_mode == MP3_ENCODER_MODE_VOLUME) {
-            lv_label_set_text(g_mp3_ui.label_vol_mode, "[ 旋转以调节 ]");
-            lv_obj_set_style_text_color(g_mp3_ui.label_vol_mode, COLOR_MODE_ACTIVE, 0);
-        } else {
-            lv_label_set_text(g_mp3_ui.label_vol_mode, "[ 未激活 ]");
-            lv_obj_set_style_text_color(g_mp3_ui.label_vol_mode, COLOR_MODE_INACTIVE, 0);
+    /* 7. 更新编码器模式状态 - 只在模式变化时更新 */
+    if (!g_ui_cache.initialized || g_ui_cache.encoder_mode != encoder_mode) {
+        g_ui_cache.encoder_mode = encoder_mode;
+        
+        /* 切歌模式状态 */
+        if (is_obj_valid(g_mp3_ui.label_track_mode)) {
+            if (encoder_mode == MP3_ENCODER_MODE_TRACK) {
+                lv_label_set_text(g_mp3_ui.label_track_mode, "[ 旋转切歌 ]");
+                lv_obj_set_style_text_color(g_mp3_ui.label_track_mode, COLOR_MODE_ACTIVE, 0);
+            } else {
+                lv_label_set_text(g_mp3_ui.label_track_mode, "[ 未激活 ]");
+                lv_obj_set_style_text_color(g_mp3_ui.label_track_mode, COLOR_MODE_INACTIVE, 0);
+            }
+        }
+        
+        /* 音量模式状态 */
+        if (is_obj_valid(g_mp3_ui.label_vol_mode)) {
+            if (encoder_mode == MP3_ENCODER_MODE_VOLUME) {
+                lv_label_set_text(g_mp3_ui.label_vol_mode, "[ 旋转调节 ]");
+                lv_obj_set_style_text_color(g_mp3_ui.label_vol_mode, COLOR_MODE_ACTIVE, 0);
+            } else {
+                lv_label_set_text(g_mp3_ui.label_vol_mode, "[ 未激活 ]");
+                lv_obj_set_style_text_color(g_mp3_ui.label_vol_mode, COLOR_MODE_INACTIVE, 0);
+            }
         }
     }
+    
+    /* 标记缓存已初始化 */
+    g_ui_cache.initialized = true;
     
     return 0;
 }
@@ -417,6 +498,9 @@ void mp3_screen_ui_cleanup(void)
     /* 清空句柄 */
     rt_memset(&g_mp3_ui, 0, sizeof(g_mp3_ui));
     g_ui_built = false;
+    
+    /* 清空UI缓存 */
+    rt_memset(&g_ui_cache, 0, sizeof(g_ui_cache));
     
     rt_kprintf("[MP3_UI] UI cleanup complete\n");
 }
