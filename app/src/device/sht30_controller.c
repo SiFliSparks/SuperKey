@@ -335,9 +335,7 @@ int sht30_controller_read(sht30_data_t *data)
     g_sht30.latest_data = *data;
     rt_mutex_release(g_sht30.lock);
     
-    rt_kprintf("[SHT30] 读取成功！\n");
-    rt_kprintf("[SHT30] 温度: %.2f°C\n", data->temperature_c);
-    rt_kprintf("[SHT30] 湿度: %.2f%%\n", data->humidity_rh);
+    rt_kprintf("[SHT30] 温度: %.2f°C 湿度: %.2f%%\n", data->temperature_c ,  data->humidity_rh);
     
     return RT_EOK;
 }

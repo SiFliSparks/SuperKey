@@ -29,7 +29,7 @@
 #define MP3_THREAD_STACK_SIZE   4096                /* 线程栈大小 - 增大以支持MP3解码 */
 #define MP3_THREAD_PRIORITY     10                  /* 线程优先级 - 提高优先级 */
 #define MP3_MSG_QUEUE_SIZE      8                   /* 消息队列大小 */
-#define MP3_DEFAULT_VOLUME      8                   /* 默认音量 */
+#define MP3_DEFAULT_VOLUME      4                   /* 默认音量 */
 #define MP3_MAX_VOLUME          15                  /* 最大音量 */
 
 /*============================================================================

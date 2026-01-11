@@ -258,7 +258,6 @@ void mp3_screen_context_deactivate(void)
 {
     g_mp3_ctx.active = false;
     g_mp3_ctx.encoder_mode = MP3_ENCODER_MODE_NONE;
-    rt_kprintf("[MP3_CTX] Deactivated (playback continues in background)\n");
 }
 
 bool mp3_screen_context_is_active(void)

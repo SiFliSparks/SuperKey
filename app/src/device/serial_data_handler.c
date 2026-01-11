@@ -20,8 +20,25 @@
 static rt_device_t serial_device = RT_NULL;
 static rt_sem_t rx_sem = RT_NULL;
 static rt_timer_t watchdog_timer = RT_NULL;
+
+/* CDC 双通道支持 */
+#define CDC_LINE_BUFFER_SIZE 1024
+static char cdc_line_buffer[CDC_LINE_BUFFER_SIZE];
+static int cdc_line_index = 0;
 static void check_and_publish_forecast(void);
 static void handle_sys_get_command(const char *key);
+
+/* CDC 命令队列 - 用于将ISR中的数据延迟到线程处理 */
+#define CDC_CMD_MQ_SIZE     16
+#define CDC_CMD_MAX_LEN     256
+
+typedef struct {
+    char cmd[CDC_CMD_MAX_LEN];
+    uint16_t len;
+} cdc_cmd_msg_t;
+
+static rt_mq_t g_cdc_cmd_mq = RT_NULL;
+static rt_thread_t g_cdc_proc_thread = RT_NULL;
 static struct {
     rt_tick_t last_received_tick;
     bool connection_alive;
@@ -1189,6 +1206,65 @@ static void process_finsh_command(const char *cmd_str)
     }
 }
 
+/* ============================================================================
+ * CDC 接收回调 - 处理USB虚拟串口数据 (在USB中断上下文中调用)
+ * 注意：此函数在ISR中执行，不能调用任何可能阻塞或使用mutex的函数！
+ * ============================================================================ */
+static void cdc_rx_handler(const uint8_t *data, uint32_t len)
+{
+    if (!data || len == 0) return;
+    
+    for (uint32_t i = 0; i < len; i++) {
+        char ch = (char)data[i];
+        
+        if (ch == '\n' || ch == '\r') {
+            if (cdc_line_index > 0) {
+                cdc_line_buffer[cdc_line_index] = '\0';
+                
+                /* 将命令发送到消息队列，由线程处理 */
+                if (g_cdc_cmd_mq) {
+                    cdc_cmd_msg_t msg;
+                    int copy_len = (cdc_line_index < CDC_CMD_MAX_LEN - 1) ? 
+                                   cdc_line_index : (CDC_CMD_MAX_LEN - 1);
+                    rt_memcpy(msg.cmd, cdc_line_buffer, copy_len);
+                    msg.cmd[copy_len] = '\0';
+                    msg.len = copy_len;
+                    
+                    /* 使用无等待发送（在ISR中不能等待） */
+                    rt_mq_send(g_cdc_cmd_mq, &msg, sizeof(msg));
+                }
+                
+                cdc_line_index = 0;
+                rt_memset(cdc_line_buffer, 0, sizeof(cdc_line_buffer));
+            }
+        } else if (ch >= 0x20 || ch == 0x09) {
+            if (cdc_line_index < CDC_LINE_BUFFER_SIZE - 2) {
+                cdc_line_buffer[cdc_line_index++] = ch;
+            } else {
+                cdc_line_index = 0;
+                rt_memset(cdc_line_buffer, 0, sizeof(cdc_line_buffer));
+            }
+        }
+    }
+}
+
+/* ============================================================================
+ * CDC 命令处理线程 - 在线程上下文中处理命令，可以安全使用mutex
+ * ============================================================================ */
+static void cdc_cmd_thread_entry(void *parameter)
+{
+    (void)parameter;
+    cdc_cmd_msg_t msg;
+    
+    rt_kprintf("[CDC] Command processing thread started\n");
+    
+    while (1) {
+        if (rt_mq_recv(g_cdc_cmd_mq, &msg, sizeof(msg), RT_WAITING_FOREVER) == RT_EOK) {
+            process_finsh_command(msg.cmd);
+        }
+    }
+}
+
 
 static rt_err_t serial_rx_callback(rt_device_t dev, rt_size_t size)
 {
@@ -1270,9 +1346,33 @@ int serial_data_handler_init(void)
 {
     rt_thread_t thread;
     custom_key_storage_init();
+    
+    /* 创建CDC命令消息队列 */
+    g_cdc_cmd_mq = rt_mq_create("cdc_cmd", sizeof(cdc_cmd_msg_t), 
+                                CDC_CMD_MQ_SIZE, RT_IPC_FLAG_PRIO);
+    if (!g_cdc_cmd_mq) {
+        return -RT_ENOMEM;
+    }
+    
+    /* 创建CDC命令处理线程 */
+    g_cdc_proc_thread = rt_thread_create("cdc_proc",
+                                         cdc_cmd_thread_entry,
+                                         RT_NULL,
+                                         4096,
+                                         12, 10);
+    if (!g_cdc_proc_thread) {
+        rt_mq_delete(g_cdc_cmd_mq);
+        g_cdc_cmd_mq = RT_NULL;
+        return -RT_ENOMEM;
+    }
+    rt_thread_startup(g_cdc_proc_thread);
+    
+    /* 注册CDC接收回调 */
+    cdc_set_rx_callback(cdc_rx_handler);
+    
     serial_device = rt_device_find(SERIAL_DEVICE_NAME);
     if (!serial_device) {
-        return -RT_ERROR;
+        return RT_EOK;  /* CDC仍然可用 */
     }
     
     struct serial_configure config = RT_SERIAL_CONFIG_DEFAULT;
@@ -1324,6 +1424,17 @@ int serial_data_handler_init(void)
 
 int serial_data_handler_deinit(void)
 {
+    /* 取消CDC回调 */
+    cdc_set_rx_callback(NULL);
+    
+    /* 清理CDC命令队列和处理线程 */
+    if (g_cdc_cmd_mq) {
+        rt_mq_delete(g_cdc_cmd_mq);
+        g_cdc_cmd_mq = RT_NULL;
+    }
+    /* 注：线程会在消息队列删除后自动退出 */
+    g_cdc_proc_thread = RT_NULL;
+    
     if (watchdog_timer) {
         rt_timer_stop(watchdog_timer);
         rt_timer_delete(watchdog_timer);
@@ -1347,22 +1458,47 @@ int serial_data_handler_deinit(void)
  * @param response 响应字符串
  * @return 发送的字节数, <0 失败
  */
+/**
+ * @brief 发送响应字符串到上位机（同时通过UART和CDC发送）
+ * @param response 响应字符串
+ * @return 发送的字节数, <0 失败
+ */
 int serial_send_response(const char *response)
 {
-    if (!response || !serial_device) {
+    if (!response) {
         return -RT_EINVAL;
     }
     
+    int ret = 0;
     rt_size_t len = strlen(response);
-    rt_size_t sent = rt_device_write(serial_device, 0, response, len);
+    char response_with_newline[256];
     
-    /* 添加换行符 */
-    if (sent == len) {
-        rt_device_write(serial_device, 0, "\n", 1);
-        sent++;
+    /* 构建带换行符的响应 */
+    if (len < sizeof(response_with_newline) - 2) {
+        rt_memcpy(response_with_newline, response, len);
+        response_with_newline[len] = '\n';
+        response_with_newline[len + 1] = '\0';
+    } else {
+        return -RT_EINVAL;
     }
     
-    return (int)sent;
+    /* 通过UART发送 */
+    if (serial_device) {
+        rt_size_t sent = rt_device_write(serial_device, 0, response_with_newline, len + 1);
+        if (sent == len + 1) {
+            ret = (int)sent;
+        }
+    }
+    
+    /* 通过CDC发送 */
+    if (cdc_device_ready()) {
+        int cdc_ret = cdc_write_string(response_with_newline);
+        if (cdc_ret > 0) {
+            ret = cdc_ret;
+        }
+    }
+    
+    return ret;
 }
 
 /**
@@ -1371,7 +1507,8 @@ int serial_send_response(const char *response)
  */
 int serial_report_firmware_version(void)
 {
-    if (!serial_device) {
+    /* 允许仅CDC模式 */
+    if (!serial_device && !cdc_device_ready()) {
         return -RT_ERROR;
     }
     

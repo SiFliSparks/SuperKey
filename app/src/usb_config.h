@@ -42,7 +42,7 @@
 #endif
 
 #ifndef CONFIG_USBDEV_EP_NUM
-#define CONFIG_USBDEV_EP_NUM 4
+#define CONFIG_USBDEV_EP_NUM 8
 #endif
 
 /* ================= USB Host Stack Configuration ================ */
@@ -110,6 +110,11 @@
 /* ================= HID Device Configuration ================ */
 #ifndef CONFIG_USBDEV_HID_MAX_INTF
 #define CONFIG_USBDEV_HID_MAX_INTF 1
+#endif
+
+/* ================= CDC Device Configuration ================ */
+#ifndef CONFIG_USBDEV_CDC_ACM_MAX_INTF
+#define CONFIG_USBDEV_CDC_ACM_MAX_INTF 2
 #endif
 
 /* USB Memory Alignment Macros */

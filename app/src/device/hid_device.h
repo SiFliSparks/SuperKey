@@ -1,95 +1,18 @@
+/**
+ * @file hid_device.h
+ * @brief HID设备兼容层
+ * 
+ * 此文件作为兼容层，实际实现已迁移到 hid_cdc_composite.h/c
+ * 包含此头文件即可获得与之前完全相同的HID API
+ * 
+ * 新增功能：
+ * - CDC虚拟串口支持（通过 hid_cdc_composite.h）
+ */
+
 #ifndef HID_DEVICE_H
 #define HID_DEVICE_H
 
-#include <stdint.h>
-#include <stdbool.h>
+/* 包含复合设备头文件，获得所有HID和CDC API */
+#include "../device/hid_cdc_composite.h"
 
-#define MOD_LCTRL  0x01
-#define MOD_LSHIFT 0x02
-#define MOD_LALT   0x04
-#define MOD_LGUI   0x08
-#define MOD_RCTRL  0x10
-#define MOD_RSHIFT 0x20
-#define MOD_RALT   0x40
-#define MOD_RGUI   0x80
-
-#define OS_MODIFIER MOD_LCTRL
-
-#define KEY_A 0x04
-#define KEY_C 0x06
-#define KEY_V 0x19
-#define KEY_X 0x1B
-#define KEY_Z 0x1D
-#define KEY_PAGE_UP   0x4B
-#define KEY_PAGE_DOWN 0x4E
-#define KEY_F5        0x3E
-
-#define CC_VOL_UP      (1u << 0)
-#define CC_VOL_DOWN    (1u << 1)
-#define CC_PLAY_PAUSE  (1u << 2)
-#define CC_SCAN_NEXT   (1u << 3)
-#define CC_SCAN_PREV   (1u << 4)
-
-/* 6-Key Rollover 最大同时按键数 */
-#define HID_KBD_MAX_KEYS  6
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-void hid_device_init(uint8_t busid, uintptr_t reg_base);
-
-/* 原有API - 保持兼容 */
-void hid_kbd_send(uint8_t modifier, uint8_t keycode);
-void hid_kbd_send_combo(uint8_t modifier, uint8_t keycode);
-void hid_consumer_click(uint8_t bits);
-bool hid_device_ready(void);
-void hid_reset_semaphore(void);
-bool hid_is_busy(void);
-
-/* 原有长按API - 单键场景 */
-void hid_kbd_press(uint8_t modifier, uint8_t keycode); 
-void hid_kbd_release(void);
-
-/* ============================================================================
- * 新增API - 支持多键同时按下 (6KRO)
- * ============================================================================ */
-
-/**
- * @brief 按下一个按键（添加到按键状态表）
- * @param modifier 修饰键（会与现有修饰键合并）
- * @param keycode HID keycode
- * @return 0成功, <0失败（如已满6个键）
- */
-int hid_kbd_key_down(uint8_t modifier, uint8_t keycode);
-
-/**
- * @brief 释放一个按键（从按键状态表移除）
- * @param modifier 要释放的修饰键
- * @param keycode HID keycode
- * @return 0成功, <0失败
- */
-int hid_kbd_key_up(uint8_t modifier, uint8_t keycode);
-
-/**
- * @brief 释放所有按键
- */
-void hid_kbd_release_all(void);
-
-/**
- * @brief 获取当前按下的按键数量
- * @return 按键数量 (0-6)
- */
-int hid_kbd_get_pressed_count(void);
-
-/**
- * @brief 检查某个按键是否按下
- * @param keycode HID keycode
- * @return true已按下, false未按下
- */
-bool hid_kbd_is_key_pressed(uint8_t keycode);
-
-#ifdef __cplusplus
-}
-#endif
 #endif /* HID_DEVICE_H */
