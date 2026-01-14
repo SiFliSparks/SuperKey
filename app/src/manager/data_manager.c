@@ -11,9 +11,6 @@ static struct {
     rt_tick_t weather_update_tick;
     rt_tick_t system_update_tick;
     rt_tick_t forecast_update_tick;
-
-    uint32_t cleanup_count;
-    rt_tick_t last_cleanup_tick;
     
     rt_mutex_t lock;
     
@@ -27,15 +24,6 @@ static bool is_data_expired(rt_tick_t last_update_tick)
     rt_tick_t now = rt_tick_get();
     rt_tick_t timeout_ticks = rt_tick_from_millisecond(DATA_TIMEOUT_MS);
     return (now - last_update_tick) > timeout_ticks;
-}
-
-static uint32_t get_data_age_seconds(rt_tick_t last_update_tick)
-{
-    if (last_update_tick == 0) return UINT32_MAX;
-    
-    rt_tick_t now = rt_tick_get();
-    rt_tick_t age_ticks = now - last_update_tick;
-    return age_ticks / RT_TICK_PER_SECOND;
 }
 
 int data_manager_update_weather(const weather_data_t *data)
@@ -128,27 +116,6 @@ int data_manager_get_system(system_monitor_data_t *data)
     return data->valid ? 0 : -RT_EEMPTY;
 }
 
-int data_manager_cleanup_expired_data(void)
-{
-    if (!g_data_store.initialized) {
-        return -RT_ERROR;
-    }
-    
-    rt_mutex_take(g_data_store.lock, RT_WAITING_FOREVER);
-    
-    int cleaned = 0;
-    rt_tick_t now = rt_tick_get();
-    
-    if (cleaned > 0) {
-        g_data_store.cleanup_count += cleaned;
-    }
-    
-    g_data_store.last_cleanup_tick = now;
-    rt_mutex_release(g_data_store.lock);
-    
-    return cleaned;
-}
-
 int data_manager_reset_all_data(void)
 {
     if (!g_data_store.initialized) {
@@ -169,20 +136,6 @@ int data_manager_reset_all_data(void)
     g_data_store.weather_update_tick = 0;
     g_data_store.system_update_tick = 0;
     
-    rt_mutex_release(g_data_store.lock);
-    return 0;
-}
-
-int data_manager_get_data_status(char *status_buf, size_t buf_size)
-{
-    if (!status_buf || buf_size < 200 || !g_data_store.initialized) {
-        return -RT_ERROR;
-    }
-    
-    rt_mutex_take(g_data_store.lock, RT_WAITING_FOREVER);
-    
-    uint32_t weather_age = get_data_age_seconds(g_data_store.weather_update_tick);
-    uint32_t system_age = get_data_age_seconds(g_data_store.system_update_tick);
     rt_mutex_release(g_data_store.lock);
     return 0;
 }
@@ -299,8 +252,6 @@ int data_manager_init(void)
     
     g_data_store.weather_update_tick = 0;
     g_data_store.system_update_tick = 0;
-    g_data_store.last_cleanup_tick = rt_tick_get();
-    g_data_store.cleanup_count = 0;
     
     event_bus_subscribe(EVENT_DATA_WEATHER_UPDATED, data_manager_weather_event_handler, 
                        NULL, EVENT_PRIORITY_NORMAL);

@@ -16,6 +16,8 @@ src = src + Glob('./manager/*.c')
 src = src + Glob('./middleware/*.c') 
 src = src + Glob('./mp3/*.c') 
 src = src + Glob('./screen/*.c') 
+src = src + Glob('./screen/screen_init/*.c')
+src = src + Glob('./screen/screen_init/screen_l2/*.c')
 src = src + Glob('./version/*.c')
 src = src + Glob('./widget/*.c') 
 # check if .h or .hpp files exsit

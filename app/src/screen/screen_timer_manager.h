@@ -9,11 +9,6 @@
 extern "C" {
 #endif
 
-/**
- * @brief 定时器类型枚举
- * 
- * 修复版本 - 添加了 SCREEN_TIMER_MP3
- */
 typedef enum {
     SCREEN_TIMER_CLOCK = 0,      /* 时钟更新 - 500ms */
     SCREEN_TIMER_WEATHER,        /* 天气更新 - 500ms */
@@ -22,8 +17,7 @@ typedef enum {
     SCREEN_TIMER_MUYU,           /* 木鱼 - 200ms */
     SCREEN_TIMER_STOPWATCH,      /* 秒表 - 100ms */
     SCREEN_TIMER_TOMATO,         /* 番茄钟 - 500ms */
-    SCREEN_TIMER_MP3,            /* MP3播放器 - 500ms (新增) */
-    SCREEN_TIMER_CLEANUP,        /* 清理 - 60000ms */
+    SCREEN_TIMER_MP3,            /* MP3播放器 - 500ms */
     SCREEN_TIMER_MAX
 } screen_timer_type_t;
 
@@ -56,10 +50,10 @@ int screen_timer_stop(screen_timer_type_t type);
 int screen_timer_restart(screen_timer_type_t type);
 
 /* 批量控制 */
-int screen_timer_start_group1_timers(void);    /* 启动Group1相关定时器 */
-int screen_timer_start_group2_timers(void);    /* 启动Group2相关定时器 */
-int screen_timer_start_group6_timers(void);    /* 启动Group6 MP3相关定时器 (新增) */
-int screen_timer_stop_all_group_timers(void);  /* 停止所有组定时器 */
+int screen_timer_start_group1_timers(void);
+int screen_timer_start_group2_timers(void);
+int screen_timer_start_group6_timers(void);
+int screen_timer_stop_all_group_timers(void);
 
 /* 配置修改 */
 int screen_timer_set_interval(screen_timer_type_t type, uint32_t interval_ms);
@@ -71,16 +65,7 @@ uint32_t screen_timer_get_trigger_count(screen_timer_type_t type);
 rt_tick_t screen_timer_get_last_trigger_time(screen_timer_type_t type);
 int screen_timer_get_status_string(char *buffer, size_t buffer_size);
 
-/**
- * @brief 启动L2层级专用定时器
- * @return 0成功，负数失败
- */
 int screen_timer_start_l2_timers(void);
-
-/**
- * @brief 启动L2木鱼页面定时器
- * @return 0成功，负数失败
- */
 int screen_timer_start_l2_muyu_timers(void);
 
 #ifdef __cplusplus

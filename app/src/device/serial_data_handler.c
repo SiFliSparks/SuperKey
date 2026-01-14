@@ -14,12 +14,9 @@
 
 #define SERIAL_RX_BUFFER_SIZE 1024
 #define SERIAL_DEVICE_NAME "uart1"
-#define SERIAL_TIMEOUT_MS (30000)
-#define WATCHDOG_CHECK_INTERVAL_MS (10000)
 
 static rt_device_t serial_device = RT_NULL;
 static rt_sem_t rx_sem = RT_NULL;
-static rt_timer_t watchdog_timer = RT_NULL;
 
 /* CDC 双通道支持 */
 #define CDC_LINE_BUFFER_SIZE 1024
@@ -44,7 +41,6 @@ static struct {
     bool connection_alive;
     uint32_t total_commands_received;
     uint32_t invalid_commands_count;
-    uint32_t timeout_count;
 } g_serial_status = {0};
 
 static const char* weather_code_map[] = {
@@ -786,27 +782,6 @@ static void update_connection_status(void)
     }
 }
 
-static void serial_watchdog_timer_cb(void *parameter)
-{
-    (void)parameter;
-    
-    rt_tick_t now = rt_tick_get();
-    rt_tick_t timeout_ticks = rt_tick_from_millisecond(SERIAL_TIMEOUT_MS);
-    
-    if ((now - g_serial_status.last_received_tick) > timeout_ticks) {
-        if (g_serial_status.connection_alive) {
-            g_serial_status.connection_alive = false;
-            g_serial_status.timeout_count++;
-            
-            g_finsh_data.time_valid = false;
-            g_finsh_data.weather_valid = false;
-            g_finsh_data.system_valid = false;
-            
-            data_manager_reset_all_data();
-        }
-    }
-}
-
 static void safe_strcpy(char *dest, const char *src, size_t dest_size)
 {
     if (!dest || !src || dest_size == 0) return;
@@ -1390,19 +1365,6 @@ int serial_data_handler_init(void)
         return -RT_ENOMEM;
     }
     
-    watchdog_timer = rt_timer_create("finsh_watchdog",
-                                     serial_watchdog_timer_cb,
-                                     RT_NULL,
-                                     rt_tick_from_millisecond(WATCHDOG_CHECK_INTERVAL_MS),
-                                     RT_TIMER_FLAG_PERIODIC | RT_TIMER_FLAG_SOFT_TIMER);
-    if (!watchdog_timer) {
-        rt_sem_delete(rx_sem);
-        rt_device_close(serial_device);
-        return -RT_ENOMEM;
-    }
-    
-    rt_timer_start(watchdog_timer);
-    
     rt_device_set_rx_indicate(serial_device, serial_rx_callback);
     
     thread = rt_thread_create("finsh_rx",
@@ -1415,8 +1377,6 @@ int serial_data_handler_init(void)
         return RT_EOK;
     }
     
-    rt_timer_stop(watchdog_timer);
-    rt_timer_delete(watchdog_timer);
     rt_sem_delete(rx_sem);
     rt_device_close(serial_device);
     return -RT_ERROR;
@@ -1434,12 +1394,6 @@ int serial_data_handler_deinit(void)
     }
     /* 注：线程会在消息队列删除后自动退出 */
     g_cdc_proc_thread = RT_NULL;
-    
-    if (watchdog_timer) {
-        rt_timer_stop(watchdog_timer);
-        rt_timer_delete(watchdog_timer);
-        watchdog_timer = RT_NULL;
-    }
     
     if (serial_device) {
         rt_device_close(serial_device);
@@ -1559,10 +1513,9 @@ static void handle_sys_get_command(const char *key)
     else if (strcmp(key, "status") == 0) {
         /* 查询连接状态 */
         snprintf(response, sizeof(response), 
-                 "STATUS:cmds=%lu,invalid=%lu,timeout=%lu",
+                 "STATUS:cmds=%lu,invalid=%lu",
                  (unsigned long)g_serial_status.total_commands_received,
-                 (unsigned long)g_serial_status.invalid_commands_count,
-                 (unsigned long)g_serial_status.timeout_count);
+                 (unsigned long)g_serial_status.invalid_commands_count);
     }
     else {
         /* 未知查询 */

@@ -6,11 +6,6 @@
 
 static screen_timer_manager_t g_timer_mgr = {0};
 
-/**
- * @brief 默认定时器配置
- * 
- * 修复版本 - 添加了 MP3 定时器配置
- */
 static const screen_timer_config_t default_configs[SCREEN_TIMER_MAX] = {
     {SCREEN_TIMER_CLOCK,     500,   true,  true,  "clock"},
     {SCREEN_TIMER_WEATHER,   500,   true,  true,  "weather"},
@@ -19,13 +14,9 @@ static const screen_timer_config_t default_configs[SCREEN_TIMER_MAX] = {
     {SCREEN_TIMER_MUYU,      200,   true,  true,  "muyu"},
     {SCREEN_TIMER_STOPWATCH, 100,   true,  true,  "stopwatch"},
     {SCREEN_TIMER_TOMATO,    500,   true,  true,  "tomato"},
-    {SCREEN_TIMER_MP3,       500,   true,  true,  "mp3"},      /* 新增 */
-    {SCREEN_TIMER_CLEANUP,   60000, true,  true,  "cleanup"}
+    {SCREEN_TIMER_MP3,       500,   true,  true,  "mp3"}
 };
 
-/**
- * @brief 安全的定时器回调函数
- */
 static void safe_timer_callback(void *parameter)
 {
     screen_timer_type_t type = (screen_timer_type_t)((uintptr_t)parameter);
@@ -54,10 +45,6 @@ static void safe_timer_callback(void *parameter)
             screen_core_post_update_weather(NULL);
             break;
             
-        case SCREEN_TIMER_CLEANUP:
-            screen_core_post_cleanup_request();
-            break;
-            
         case SCREEN_TIMER_MUYU:
             screen_core_post_update_time();
             break;
@@ -71,7 +58,6 @@ static void safe_timer_callback(void *parameter)
             break;
             
         case SCREEN_TIMER_MP3:
-            /* MP3 定时器触发 UI 更新 */
             screen_core_post_update_time();
             break;
             
@@ -80,17 +66,11 @@ static void safe_timer_callback(void *parameter)
     }
 }
 
-/**
- * @brief 启动 L2 木鱼页面定时器
- */
 int screen_timer_start_l2_muyu_timers(void)
 {
     return screen_timer_start(SCREEN_TIMER_MUYU);
 }
 
-/**
- * @brief 启动 L2 层级定时器
- */
 int screen_timer_start_l2_timers(void)
 {
     int ret = 0;
@@ -98,17 +78,11 @@ int screen_timer_start_l2_timers(void)
     return ret;
 }
 
-/**
- * @brief 启动 Group6 MP3 相关定时器
- */
 int screen_timer_start_group6_timers(void)
 {
     return screen_timer_start(SCREEN_TIMER_MP3);
 }
 
-/**
- * @brief 初始化定时器管理器
- */
 int screen_timer_manager_init(void)
 {
     if (g_timer_mgr.initialized) {
@@ -134,7 +108,6 @@ int screen_timer_manager_init(void)
         );
         
         if (!g_timer_mgr.timers[i]) {
-            /* 创建失败，清理已创建的定时器 */
             for (int j = 0; j < i; j++) {
                 if (g_timer_mgr.timers[j]) {
                     rt_timer_delete(g_timer_mgr.timers[j]);
@@ -151,14 +124,10 @@ int screen_timer_manager_init(void)
     }
     
     g_timer_mgr.initialized = true;
-    rt_kprintf("[TimerMgr] Initialized with %d timers\n", SCREEN_TIMER_MAX);
     
     return 0;
 }
 
-/**
- * @brief 反初始化定时器管理器
- */
 int screen_timer_manager_deinit(void)
 {
     if (!g_timer_mgr.initialized) {
@@ -182,14 +151,10 @@ int screen_timer_manager_deinit(void)
     memset(g_timer_mgr.last_trigger_times, 0, sizeof(g_timer_mgr.last_trigger_times));
     
     g_timer_mgr.initialized = false;
-    rt_kprintf("[TimerMgr] Deinitialized\n");
     
     return 0;
 }
 
-/**
- * @brief 启动指定定时器
- */
 int screen_timer_start(screen_timer_type_t type)
 {
     if (!g_timer_mgr.initialized || type >= SCREEN_TIMER_MAX) {
@@ -212,9 +177,6 @@ int screen_timer_start(screen_timer_type_t type)
     return ret;
 }
 
-/**
- * @brief 停止指定定时器
- */
 int screen_timer_stop(screen_timer_type_t type)
 {
     if (!g_timer_mgr.initialized || type >= SCREEN_TIMER_MAX) {
@@ -231,9 +193,6 @@ int screen_timer_stop(screen_timer_type_t type)
     return 0;
 }
 
-/**
- * @brief 重启指定定时器
- */
 int screen_timer_restart(screen_timer_type_t type)
 {
     screen_timer_stop(type);
@@ -241,9 +200,6 @@ int screen_timer_restart(screen_timer_type_t type)
     return screen_timer_start(type);
 }
 
-/**
- * @brief 启动 Group1 相关定时器
- */
 int screen_timer_start_group1_timers(void)
 {
     int ret = 0;
@@ -253,9 +209,6 @@ int screen_timer_start_group1_timers(void)
     return ret;
 }
 
-/**
- * @brief 启动 Group2 相关定时器
- */
 int screen_timer_start_group2_timers(void)
 {
     int ret = 0;
@@ -263,9 +216,6 @@ int screen_timer_start_group2_timers(void)
     return ret;
 }
 
-/**
- * @brief 停止所有组定时器
- */
 int screen_timer_stop_all_group_timers(void)
 {
     int ret = 0;
@@ -277,9 +227,6 @@ int screen_timer_stop_all_group_timers(void)
     return ret;
 }
 
-/**
- * @brief 设置定时器间隔
- */
 int screen_timer_set_interval(screen_timer_type_t type, uint32_t interval_ms)
 {
     if (!g_timer_mgr.initialized || type >= SCREEN_TIMER_MAX) {
@@ -299,9 +246,6 @@ int screen_timer_set_interval(screen_timer_type_t type, uint32_t interval_ms)
     return 0;
 }
 
-/**
- * @brief 启用/禁用定时器
- */
 int screen_timer_enable(screen_timer_type_t type, bool enabled)
 {
     if (!g_timer_mgr.initialized || type >= SCREEN_TIMER_MAX) {
@@ -314,9 +258,6 @@ int screen_timer_enable(screen_timer_type_t type, bool enabled)
     return 0;
 }
 
-/**
- * @brief 检查定时器是否运行中
- */
 bool screen_timer_is_running(screen_timer_type_t type)
 {
     if (!g_timer_mgr.initialized || type >= SCREEN_TIMER_MAX || !g_timer_mgr.timers[type]) {
@@ -331,9 +272,6 @@ bool screen_timer_is_running(screen_timer_type_t type)
     return enabled && timer_exists;
 }
 
-/**
- * @brief 获取定时器触发计数
- */
 uint32_t screen_timer_get_trigger_count(screen_timer_type_t type)
 {
     if (!g_timer_mgr.initialized || type >= SCREEN_TIMER_MAX) {
@@ -343,9 +281,6 @@ uint32_t screen_timer_get_trigger_count(screen_timer_type_t type)
     return g_timer_mgr.trigger_counts[type];
 }
 
-/**
- * @brief 获取定时器最后触发时间
- */
 rt_tick_t screen_timer_get_last_trigger_time(screen_timer_type_t type)
 {
     if (!g_timer_mgr.initialized || type >= SCREEN_TIMER_MAX) {
@@ -355,9 +290,6 @@ rt_tick_t screen_timer_get_last_trigger_time(screen_timer_type_t type)
     return g_timer_mgr.last_trigger_times[type];
 }
 
-/**
- * @brief 获取定时器状态字符串
- */
 int screen_timer_get_status_string(char *buffer, size_t buffer_size)
 {
     if (!buffer || buffer_size < 200 || !g_timer_mgr.initialized) {

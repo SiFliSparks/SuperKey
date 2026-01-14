@@ -17,6 +17,7 @@
 #include "../mp3/mp3_screen_ui.h"
 #include "../mp3/mp3_screen_context.h"
 #include "../screen/screen_ui_manager.h"  /* 引入样式定义 */
+#include "../screen/screen_init/screen_ui_common.h"  /* 引入公共UI函数 */
 
 #if defined(BSP_USING_RTTHREAD) && !defined(CFG_BOOTLOADER)
 
@@ -24,14 +25,7 @@
  * 配置 - 适配 128x128 三屏布局
  *============================================================================*/
 
-/* 单屏尺寸 */
-#define SCREEN_WIDTH        128
-#define SCREEN_HEIGHT       128
-
-/* 三屏位置 */
-#define LEFT_X              0
-#define MID_X               128
-#define RIGHT_X             256
+/* 注意: SCREEN_WIDTH, SCREEN_HEIGHT, LEFT_X, MID_X, RIGHT_X 已在 screen_ui_common.h 中定义 */
 
 /* 进度条配置 */
 #define PROGRESS_BAR_WIDTH  110
@@ -112,20 +106,7 @@ extern screen_ui_manager_t g_ui_mgr;
  * 辅助函数
  *============================================================================*/
 
-/**
- * @brief 创建面板
- */
-static lv_obj_t *create_panel(lv_obj_t *parent, lv_coord_t x_pos)
-{
-    lv_obj_t *panel = lv_obj_create(parent);
-    lv_obj_remove_style_all(panel);
-    lv_obj_set_size(panel, SCREEN_WIDTH, SCREEN_HEIGHT);
-    lv_obj_set_pos(panel, x_pos, 0);
-    lv_obj_set_style_bg_color(panel, COLOR_BG, 0);
-    lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, 0);
-    lv_obj_clear_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
-    return panel;
-}
+/* 注意: create_panel() 已在 screen_ui_common.c 中实现，通过 screen_ui_common.h 引入 */
 
 /**
  * @brief 检查对象是否有效

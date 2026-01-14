@@ -10,22 +10,16 @@
 extern "C" {
 #endif
 
-/**
- * @brief 屏幕消息类型
- * 
- * 修复版本 - 添加了 MP3 更新消息
- */
 typedef enum {
     SCREEN_MSG_UPDATE_TIME = 0,
     SCREEN_MSG_UPDATE_WEATHER,
     SCREEN_MSG_UPDATE_SYSTEM,
     SCREEN_MSG_UPDATE_SENSOR,
     SCREEN_MSG_UPDATE_FORECAST,
-    SCREEN_MSG_UPDATE_MP3,          /* 新增: MP3 UI 更新 */
+    SCREEN_MSG_UPDATE_MP3,
     SCREEN_MSG_SWITCH_GROUP,
     SCREEN_MSG_ENTER_L2,
     SCREEN_MSG_RETURN_L1,
-    SCREEN_MSG_CLEANUP_REQUEST,
     SCREEN_MSG_MAX
 } screen_msg_type_t;
 
@@ -62,7 +56,7 @@ typedef struct {
     
     /* 当前状态 */
     screen_group_t current_group;
-    screen_group_t previous_group;      /* 新增: 记录前一个组 */
+    screen_group_t previous_group;
     screen_level_t current_level;
     screen_l2_group_t l2_current_group;
     screen_l2_page_t l2_current_page;
@@ -74,7 +68,6 @@ typedef struct {
     /* 统计信息 */
     uint32_t messages_processed;
     uint32_t switch_count;
-    uint32_t last_cleanup_time;
     
 } screen_core_t;
 
@@ -89,16 +82,15 @@ int screen_core_post_return_l1(void);
 int screen_core_post_update_time(void);
 int screen_core_post_update_weather(const weather_data_t *data);
 int screen_core_post_update_system(const system_monitor_data_t *data);
-int screen_core_post_cleanup_request(void);
 int screen_core_post_update_forecast(const weather_forecast_data_t *data);
-int screen_core_post_update_mp3(void);      /* 新增: MP3 更新 */
+int screen_core_post_update_mp3(void);
 
 /* 消息处理 - 仅在GUI线程调用 */
 int screen_core_process_messages(void);
 
 /* 状态查询 - 线程安全 */
 screen_group_t screen_core_get_current_group(void);
-screen_group_t screen_core_get_previous_group(void);   /* 新增: 获取前一个组 */
+screen_group_t screen_core_get_previous_group(void);
 screen_level_t screen_core_get_current_level(void);
 screen_l2_group_t screen_core_get_current_l2_group(void);
 bool screen_core_is_switching(void);

@@ -8,6 +8,7 @@
 #include <time.h>
 #include <string.h>
 #include "../screen/screen_context.h"
+
 #define MESSAGE_QUEUE_SIZE 32
 #define MESSAGE_TIMEOUT_MS 1
 
@@ -19,7 +20,6 @@ static int process_update_system_message(const system_monitor_data_t *data);
 static int process_switch_group_message(const screen_switch_msg_t *msg);
 static int process_enter_l2_message(const screen_l2_enter_msg_t *msg);
 static int process_return_l1_message(void);
-static int process_cleanup_message(void);
 static int process_update_forecast_message(const weather_forecast_data_t *data);
 static int process_update_mp3_message(void);
 
@@ -53,7 +53,6 @@ int screen_core_init(void)
     g_core.switching_in_progress = false;
     g_core.messages_processed = 0;
     g_core.switch_count = 0;
-    g_core.last_cleanup_time = rt_tick_get();
     
     return 0;
 }
@@ -169,20 +168,6 @@ int screen_core_post_update_system(const system_monitor_data_t *data)
     return (result == RT_EOK) ? 0 : -RT_ERROR;
 }
 
-int screen_core_post_cleanup_request(void)
-{
-    if (!g_core.message_queue) {
-        return -RT_ERROR;
-    }
-    
-    screen_message_t msg = {0};
-    msg.type = SCREEN_MSG_CLEANUP_REQUEST;
-    msg.timestamp = rt_tick_get();
-    
-    rt_err_t result = rt_mq_send(g_core.message_queue, &msg, sizeof(msg));
-    return (result == RT_EOK) ? 0 : -RT_ERROR;
-}
-
 int screen_core_post_update_forecast(const weather_forecast_data_t *data)
 {
     if (!g_core.message_queue) {
@@ -255,9 +240,6 @@ int screen_core_process_messages(void)
                 break;
             case SCREEN_MSG_RETURN_L1:
                 process_return_l1_message();
-                break;
-            case SCREEN_MSG_CLEANUP_REQUEST:
-                process_cleanup_message();
                 break;
             default:
                 break;
@@ -377,19 +359,6 @@ static int process_update_mp3_message(void)
     }
     
     return mp3_screen_ui_update();
-}
-
-static int get_max_pages_in_l2_group(screen_l2_group_t l2_group)
-{
-    switch (l2_group) {
-        case SCREEN_L2_TIME_GROUP:
-        case SCREEN_L2_MEDIA_GROUP:
-        case SCREEN_L2_WEB_GROUP:
-        case SCREEN_L2_SHORTCUT_GROUP:
-            return 1;
-        default:
-            return 0;
-    }
 }
 
 static int process_switch_group_message(const screen_switch_msg_t *msg)
@@ -538,13 +507,6 @@ static int process_return_l1_message(void)
     }
     
     return ret;
-}
-
-static int process_cleanup_message(void)
-{
-    data_manager_cleanup_expired_data();
-    g_core.last_cleanup_time = rt_tick_get();
-    return 0;
 }
 
 screen_group_t screen_core_get_current_group(void)
