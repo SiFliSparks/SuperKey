@@ -787,7 +787,6 @@ void hid_cdc_composite_init(uint8_t busid, uintptr_t reg_base)
     if (g_hid_complete_sem == RT_NULL) {
         g_hid_complete_sem = rt_sem_create("hid_sem", 0, RT_IPC_FLAG_PRIO);
         if (g_hid_complete_sem == RT_NULL) {
-            rt_kprintf("[USB] Failed to create HID semaphore\n");
             return;
         }
     }
@@ -795,7 +794,6 @@ void hid_cdc_composite_init(uint8_t busid, uintptr_t reg_base)
     if (g_cdc_tx_sem == RT_NULL) {
         g_cdc_tx_sem = rt_sem_create("cdc_sem", 0, RT_IPC_FLAG_PRIO);
         if (g_cdc_tx_sem == RT_NULL) {
-            rt_kprintf("[USB] Failed to create CDC semaphore\n");
             return;
         }
     }
@@ -820,8 +818,6 @@ void hid_cdc_composite_init(uint8_t busid, uintptr_t reg_base)
     
     /* 初始化 USB 设备 */
     usbd_initialize(busid, reg_base, usbd_event_handler);
-    
-    rt_kprintf("[USB] HID+CDC Composite device initialized\n");
 }
 
 /* ============================================================================

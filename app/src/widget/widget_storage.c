@@ -56,13 +56,10 @@ int widget_storage_init(void)
         return 0;
     }
     
-    rt_kprintf("[Widget] Initializing (FS mode)\n");
-    
     /* 创建互斥锁 */
     if (g_storage_mutex == RT_NULL) {
         g_storage_mutex = rt_mutex_create("wdg_mtx", RT_IPC_FLAG_PRIO);
         if (g_storage_mutex == RT_NULL) {
-            rt_kprintf("[Widget] Failed to create mutex\n");
             return -RT_ENOMEM;
         }
     }
@@ -71,7 +68,6 @@ int widget_storage_init(void)
     if (!fs_config_is_ready()) {
         /* 尝试初始化文件系统配置模块 */
         if (fs_config_storage_init() != FS_CFG_OK) {
-            rt_kprintf("[Widget] FS not ready, using defaults\n");
             init_default_config();
             g_initialized = true;
             return 0;
@@ -80,15 +76,11 @@ int widget_storage_init(void)
     
     /* 尝试从文件加载配置 */
     if (widget_storage_load() != 0) {
-        rt_kprintf("[Widget] No saved config, using defaults\n");
         init_default_config();
         /* 首次保存默认配置 */
         widget_storage_save();
     }
-    
     g_initialized = true;
-    rt_kprintf("[Widget] Ready, active=%s\n", 
-               widget_get_type_name(g_active_widget.type));
     
     return 0;
 }
@@ -112,9 +104,7 @@ int widget_storage_load(void)
         /* 验证数据有效性 */
         if (temp_config.type < WIDGET_TYPE_MAX) {
             g_active_widget = temp_config;
-            rt_kprintf("[Widget] Loaded from file (ver=%u)\n", version);
         } else {
-            rt_kprintf("[Widget] Invalid config type, using defaults\n");
             ret = -1;
         }
     }
@@ -129,7 +119,6 @@ int widget_storage_load(void)
 int widget_storage_save(void)
 {
     if (!fs_config_is_ready()) {
-        rt_kprintf("[Widget] FS not ready, cannot save\n");
         return -RT_ERROR;
     }
     
@@ -144,7 +133,6 @@ int widget_storage_save(void)
                              sizeof(widget_config_t));
     
     if (ret != FS_CFG_OK) {
-        rt_kprintf("[Widget] Save failed: %d\n", ret);
     }
     
     if (g_storage_mutex) {
@@ -169,8 +157,6 @@ int widget_storage_set_active(const widget_config_t *config)
     }
     
     g_active_widget = *config;
-    
-    rt_kprintf("[Widget] Set active: %s\n", widget_get_type_name(config->type));
     
     if (g_storage_mutex) {
         rt_mutex_release(g_storage_mutex);
@@ -236,43 +222,3 @@ void widget_storage_reset(void)
     widget_storage_save();
 }
 
-bool widget_storage_is_valid(void)
-{
-    return g_initialized && (g_active_widget.type < WIDGET_TYPE_MAX);
-}
-
-void widget_storage_dump(void)
-{
-    rt_kprintf("\n=== Widget Storage (FS mode) ===\n");
-    rt_kprintf("Initialized: %s\n", g_initialized ? "YES" : "NO");
-    rt_kprintf("FS Ready: %s\n", fs_config_is_ready() ? "YES" : "NO");
-    rt_kprintf("Config file: %s\n", WIDGET_CONFIG_FILE);
-    rt_kprintf("Active: %s\n", widget_get_type_name(g_active_widget.type));
-    
-    switch (g_active_widget.type) {
-        case WIDGET_TYPE_RANDOM_NUMBER:
-            rt_kprintf("  Max: %d\n", 
-                widget_get_random_max_value(g_active_widget.config.random.max_option));
-            break;
-        case WIDGET_TYPE_OFF_WORK_COUNTDOWN:
-            rt_kprintf("  Target: %02d:%02d\n",
-                g_active_widget.config.offwork.target_hour,
-                g_active_widget.config.offwork.target_minute);
-            break;
-        default:
-            break;
-    }
-    rt_kprintf("================================\n");
-}
-
-/* ============================================================================
- * Shell 调试命令
- * ============================================================================ */
-
-#ifdef RT_USING_FINSH
-#include <finsh.h>
-void wdg_dump(void) { widget_storage_dump(); }
-void wdg_reset(void) { widget_storage_reset(); }
-MSH_CMD_EXPORT(wdg_dump, Dump widget config);
-MSH_CMD_EXPORT(wdg_reset, Reset widget config);
-#endif

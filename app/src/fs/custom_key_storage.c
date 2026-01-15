@@ -45,13 +45,10 @@ int custom_key_storage_init(void)
         return 0;
     }
     
-    rt_kprintf("[CKey] Initializing (FS mode)\n");
-    
     /* 创建互斥锁 */
     if (g_config_mutex == RT_NULL) {
         g_config_mutex = rt_mutex_create("ck_mtx", RT_IPC_FLAG_PRIO);
         if (g_config_mutex == RT_NULL) {
-            rt_kprintf("[CKey] Failed to create mutex\n");
             return -RT_ENOMEM;
         }
     }
@@ -60,7 +57,6 @@ int custom_key_storage_init(void)
     if (!fs_config_is_ready()) {
         /* 尝试初始化文件系统配置模块 */
         if (fs_config_storage_init() != FS_CFG_OK) {
-            rt_kprintf("[CKey] FS not ready, using defaults\n");
             init_default_config();
             g_initialized = true;
             return 0;
@@ -69,7 +65,6 @@ int custom_key_storage_init(void)
     
     /* 尝试从文件加载配置 */
     if (custom_key_load_from_flash() != 0) {
-        rt_kprintf("[CKey] No saved config, using defaults\n");
         init_default_config();
     }
     
@@ -96,7 +91,6 @@ int custom_key_load_from_flash(void)
     
     if (ret == FS_CFG_OK) {
         g_key_data = temp_data;
-        rt_kprintf("[CKey] Loaded from file (ver=%u)\n", version);
     }
     
     if (g_config_mutex) {
@@ -109,7 +103,6 @@ int custom_key_load_from_flash(void)
 int custom_key_save_to_flash(void)
 {
     if (!fs_config_is_ready()) {
-        rt_kprintf("[CKey] FS not ready, cannot save\n");
         return -RT_ERROR;
     }
     
@@ -264,43 +257,4 @@ bool custom_key_is_valid(void)
     return g_initialized;
 }
 
-/* ============================================================================
- * 调试
- * ============================================================================ */
 
-void custom_key_dump_config(void)
-{
-    rt_kprintf("\n=== Custom Key (FS mode) ===\n");
-    rt_kprintf("Initialized: %s\n", g_initialized ? "YES" : "NO");
-    rt_kprintf("FS Ready: %s\n", fs_config_is_ready() ? "YES" : "NO");
-    rt_kprintf("Config file: %s\n", CUSTOM_KEY_CONFIG_FILE);
-    
-    int cnt = 0;
-    for (int g = 0; g < CUSTOM_KEY_GROUP_COUNT; g++) {
-        for (int k = 0; k < CUSTOM_KEY_PER_GROUP; k++) {
-            custom_key_t *key = &g_key_data.groups[g].keys[k];
-            if (key->enabled && key->combo_count > 0) {
-                cnt++;
-                rt_kprintf("G%d.K%d:", g, k);
-                for (int c = 0; c < key->combo_count; c++) {
-                    rt_kprintf(" [0x%02X+0x%02X]", key->combos[c].modifier, key->combos[c].keycode);
-                }
-                rt_kprintf("\n");
-            }
-        }
-    }
-    if (cnt == 0) {
-        rt_kprintf("(empty)\n");
-    }
-    rt_kprintf("============================\n");
-}
-
-#ifdef RT_USING_FINSH
-#include <finsh.h>
-void ck_dump(void) { custom_key_dump_config(); }
-void ck_reset(void) { custom_key_reset_to_default(); }
-void ck_test(void) { custom_key_parse_and_set("0,0,0x01,0x04,0,0,0,0,0,0"); ck_dump(); }
-MSH_CMD_EXPORT(ck_dump, Dump custom keys);
-MSH_CMD_EXPORT(ck_reset, Reset custom keys);
-MSH_CMD_EXPORT(ck_test, Test Ctrl+A);
-#endif

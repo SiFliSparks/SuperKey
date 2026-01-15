@@ -1231,8 +1231,6 @@ static void cdc_cmd_thread_entry(void *parameter)
     (void)parameter;
     cdc_cmd_msg_t msg;
     
-    rt_kprintf("[CDC] Command processing thread started\n");
-    
     while (1) {
         if (rt_mq_recv(g_cdc_cmd_mq, &msg, sizeof(msg), RT_WAITING_FOREVER) == RT_EOK) {
             process_finsh_command(msg.cmd);

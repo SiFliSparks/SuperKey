@@ -200,7 +200,6 @@ int widget_manager_init(void)
     /* 先初始化存储模块 */
     int ret = widget_storage_init();
     if (ret != 0) {
-        rt_kprintf("[WidgetMgr] Storage init failed: %d\n", ret);
         return ret;
     }
     
@@ -220,7 +219,6 @@ int widget_manager_init(void)
     srand(rt_tick_get());
     
     g_widget_mgr.initialized = true;
-    rt_kprintf("[WidgetMgr] Initialized\n");
     
     return 0;
 }

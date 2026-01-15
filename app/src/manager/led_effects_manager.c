@@ -510,36 +510,25 @@ int led_effects_manager_init(void)
 int led_effects_manager_start(void)
 {
     if (!g_led_mgr.initialized) {
-        rt_kprintf("[LED] Error: Not initialized, cannot start\n");
         return -RT_ERROR;
     }
     
     if (g_led_mgr.started) {
-        rt_kprintf("[LED] Warning: Already started\n");
         return 0;
     }
     
-    rt_kprintf("[LED] Starting effects manager...\n");
-    
-
     rt_thread_startup(g_led_mgr.led_thread);
-    rt_kprintf("[LED] - Thread started\n");
     
 
     rt_timer_start(g_led_mgr.update_timer);
-    rt_kprintf("[LED] - Timer started (interval: %dms)\n", LED_UPDATE_INTERVAL_MS);
-    
 
     event_bus_subscribe(EVENT_LED_FEEDBACK_REQUEST, 
                        led_feedback_event_handler, 
                        NULL, 
                        EVENT_PRIORITY_NORMAL);
-    rt_kprintf("[LED] - Event subscription registered\n");
     
 
     g_led_mgr.started = true;
-    
-    rt_kprintf("[LED] ✓ Effects manager started successfully\n");
     
     return 0;
 }
@@ -561,7 +550,6 @@ int led_effects_manager_deinit(void)
     
     if (g_led_mgr.started) {
         event_bus_unsubscribe(EVENT_LED_FEEDBACK_REQUEST, led_feedback_event_handler);
-        rt_kprintf("[LED] - Event subscription removed\n");
     }
 
     if (g_led_mgr.update_timer) {

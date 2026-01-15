@@ -1,12 +1,13 @@
 /******************************************************************************
  * @file     link.lds
  * @brief    GNU Linker Script for SF32LB52-SUPERKEY (支持ER_IROM1/2/3分区)
- * @note     将代码、字体、图像分别输出到不同的bin文件
+ * @note     主应用新地址: 0x12078000 (DFU在前面)
  ******************************************************************************/
 #include "rtconfig.h"
 #include "mem_map.h"
 
 /*---------------------- Flash Configuration ----------------------------------*/
+/* 使用 ptab 生成的 CODE_START_ADDR (现在是 0x12078000) */
 __ROM_BASE = CODE_START_ADDR;
 __ROM_SIZE = CODE_SIZE;
 

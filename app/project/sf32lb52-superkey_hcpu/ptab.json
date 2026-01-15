@@ -11,39 +11,9 @@
                 ], 
                 "img": "ftab",
                 "exec": "ftab"                
-            }, 
-            {
-                "offset": "0x00010000", 
-                "max_size": "0x00010000", 
-                "tags": [
-                    "FLASH_BOOT_LOADER"
-                ], 
-                "ftab": {
-                    "name": "bootloader", 
-                    "address": [
-                        "base"
-                    ]
-                }, 
-                "img": "bootloader"
-            }, 
-            {
-                "offset": "0x00020000", 
-                "max_size": "0x00180000",
-                "tags": [
-                    "HCPU_FLASH_CODE"
-                ], 
-                "ftab": {
-                    "name": "main", 
-                    "address": [
-                        "base", 
-                        "xip"
-                    ]
-                }, 
-                "img": "main:ER_IROM1.bin",
-                "exec": "main"
             },
             {
-                "offset": "0x001A0000",
+                "offset": "0x00008000",
                 "max_size": "0x00060000",
                 "tags": [
                     "DFU_FLASH_CODE"
@@ -59,38 +29,75 @@
                 }
             },
             {
-                "offset": "0x00200000",
-                "max_size": "0x00100000",
+                "offset": "0x00068000", 
+                "max_size": "0x00010000", 
+                "tags": [
+                    "FLASH_BOOT_LOADER"
+                ], 
+                "ftab": {
+                    "name": "bootloader", 
+                    "address": [
+                        "base"
+                    ]
+                }, 
+                "img": "bootloader"
+            }, 
+            {
+                "offset": "0x00078000", 
+                "max_size": "0x00200000",
+                "tags": [
+                    "HCPU_FLASH_CODE"
+                ], 
+                "ftab": {
+                    "name": "main", 
+                    "address": [
+                        "base", 
+                        "xip"
+                    ]
+                }, 
+                "img": "main:ER_IROM1.bin",
+                "exec": "main"
+            },
+            {
+                "offset": "0x00278000",
+                "max_size": "0x00200000",
                 "tags": [
                     "EZIP_IMAGE_DATA"
                 ],
                 "img": "main:ER_IROM3.bin"
             },
             {
-                "offset": "0x00300000",
-                "max_size": "0x00400000",
+                "offset": "0x00478000",
+                "max_size": "0x00600000",
                 "tags": [
                     "FONT_DATA"
                 ],
                 "img": "main:ER_IROM2.bin"
             },
             {
-                "offset": "0x00700000",
-                "max_size": "0x00080000",
+                "offset": "0x00A78000",
+                "max_size": "0x00200000",
+                "tags": [
+                    "DFU_DOWNLOAD_REGION"
+                ]
+            },
+            {
+                "offset": "0x00C78000",
+                "max_size": "0x00300000",
                 "tags": [
                     "FS_REGION"
                 ],
                 "img": "fs_root"
             }, 
             {
-                "offset": "0x00780000", 
+                "offset": "0x00F78000", 
                 "max_size": "0x00004000", 
                 "tags": [
                     "KVDB_DFU_REGION"
                 ]
             }, 
             {
-                "offset": "0x00784000", 
+                "offset": "0x00F7C000", 
                 "max_size": "0x00004000", 
                 "tags": [
                     "KVDB_BLE_REGION"
