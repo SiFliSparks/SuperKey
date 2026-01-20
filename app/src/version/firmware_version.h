@@ -23,13 +23,13 @@ extern "C" {
  * @brief 次版本号 (Minor)
  * 新增功能但保持向下兼容时递增
  */
-#define FW_VERSION_MINOR        2
+#define FW_VERSION_MINOR        3
 
 /**
  * @brief 修订版本号 (Patch)
  * Bug修复或小改动时递增
  */
-#define FW_VERSION_PATCH        8
+#define FW_VERSION_PATCH        0
 
 /* 辅助宏用于字符串化 */
 #define FW_STRINGIFY(x)         #x

@@ -11,7 +11,8 @@
 #include "../fs/custom_key_storage.h"
 #include "../manager/led_effects_manager.h"  /* LED串口控制 */
 #include "../version/firmware_version.h"
-
+#include "../fs/dfu_trigger.h"  /* DFU升级触发 */
+#include "../device/serial_data_handler.h"
 #define SERIAL_RX_BUFFER_SIZE 1024
 #define SERIAL_DEVICE_NAME "uart1"
 
@@ -1132,6 +1133,28 @@ static void handle_finsh_key_value(const char *key, const char *value)
     else if (strcmp(key, "custom_key") == 0) {
         custom_key_parse_and_set(value);
     }
+    /* DFU升级命令 */
+    else if (strcmp(key, "dfu") == 0 || strcmp(key, "dfu_enter") == 0) {
+        /* 进入DFU模式: sys_set dfu enter 或 sys_set dfu_enter 1 */
+        if (strcmp(value, "enter") == 0 || strcmp(value, "1") == 0 || 
+            strcmp(value, "force") == 0) {
+            serial_send_response("DFU:entering");
+            rt_thread_mdelay(100);  /* 等待响应发送 */
+            dfu_trigger_enter();    /* 设置标志并重启 */
+        }
+        /* 仅设置标志: sys_set dfu set */
+        else if (strcmp(value, "set") == 0 || strcmp(value, "flags") == 0) {
+            int ret = dfu_trigger_set_flags_only();
+            if (ret == 0) {
+                serial_send_response("DFU:flags_set");
+            } else {
+                serial_send_response("DFU:error");
+            }
+        }
+        else {
+            serial_send_response("DFU:invalid_cmd");
+        }
+    }
     else {
         rt_kprintf("[Finsh] Unknown key: %s = %s\n", key, value);
     }
@@ -1514,6 +1537,11 @@ static void handle_sys_get_command(const char *key)
                  "STATUS:cmds=%lu,invalid=%lu",
                  (unsigned long)g_serial_status.total_commands_received,
                  (unsigned long)g_serial_status.invalid_commands_count);
+    }
+    else if (strcmp(key, "dfu") == 0 || strcmp(key, "dfu_help") == 0) {
+        /* 查询DFU命令帮助 */
+        snprintf(response, sizeof(response), 
+                 "DFU_HELP:sys_set dfu enter|set|flags");
     }
     else {
         /* 未知查询 */

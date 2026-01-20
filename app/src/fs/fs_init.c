@@ -5,6 +5,9 @@
  * 功能说明：
  * - 内部Flash文件系统挂载到根目录 "/"
  * - TF卡(SD卡)通过SPI接口挂载到 "/sdcard" 目录
+ * 
+ * 修正说明：
+ * - 文件系统区域已移至 FONT_DATA 之后，避免与图片/字体数据重叠
  */
 
 #include <rtthread.h>
@@ -19,12 +22,25 @@
 #endif
 
 /* ============================================================================
- * 配置定义
+ * 配置定义 - 已修正
  * ============================================================================ */
 
-/* 内部Flash文件系统区域 */
+/* 
+ * 内部Flash文件系统区域 (已修正)
+ * 
+ * 原配置 (错误):
+ *   FS_REGION_START_ADDR = 0x128A0000  ← 与 EZIP/FONT 重叠!
+ * 
+ * 新配置 (正确):
+ *   FS_REGION_START_ADDR = 0x12B60000  ← 在 FONT_DATA 之后
+ * 
+ * Flash 布局:
+ *   0x12460000 - EZIP_IMAGE_DATA (2MB)
+ *   0x12660000 - FONT_DATA (5MB)
+ *   0x12B60000 - FS_REGION (4MB) ← 文件系统在这里
+ */
 #ifndef FS_REGION_START_ADDR
-#define FS_REGION_START_ADDR    (0x128A0000)    /* 0x12000000 + 0x008A0000 */
+#define FS_REGION_START_ADDR    (0x12B60000)    /* 0x12000000 + 0x00B60000 */
 #define FS_REGION_SIZE          (0x00400000)    /* 4MB */
 #endif
 

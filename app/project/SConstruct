@@ -31,8 +31,8 @@ env = GetCurrentEnv()
 # Build application.
 DoBuilding(TARGET, objs)
 
-if GetDepend('ENABLE_DFU'):
-    AddDFU(SIFLI_SDK)
+# Add DFU_PAN OTA
+AddDFU_PAN(SIFLI_SDK)
 
 # Add flash table buld.
 AddFTAB(SIFLI_SDK,rtconfig.CHIP)
