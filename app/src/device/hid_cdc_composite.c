@@ -180,10 +180,10 @@ static const uint8_t device_quality_descriptor[] = {
 };
 
 static const char *string_descriptors[] = {
-    (const char[]){ 0x09, 0x04 },           /* Langid */
+    (const char[]){ 0x09, 0x04 },            /* Langid */
     "SiFli",                                 /* Manufacturer */
-    "HID+CDC Composite Device",              /* Product */
-    "202501100001",                          /* Serial Number */
+    "SuperKey",                              /* Product */
+    "20263404020122",                        /* Serial Number */
 };
 
 static const uint8_t *device_descriptor_callback(uint8_t speed)
