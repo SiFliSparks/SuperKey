@@ -653,6 +653,14 @@ int led_effects_set_global_brightness(uint8_t brightness)
     return led_send_message(&msg, false);
 }
 
+uint8_t led_effects_get_global_brightness(void)
+{
+    if (!g_led_mgr.initialized) {
+        return 255;  /* 默认全亮 */
+    }
+    return g_led_mgr.global_brightness;
+}
+
 led_effect_handle_t led_effects_start_effect(const led_effect_config_t *config)
 {
     if (!g_led_mgr.initialized || !config) {

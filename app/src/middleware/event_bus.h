@@ -31,6 +31,8 @@ typedef enum {
     EVENT_SYSTEM_ERROR = 0x5000,
     EVENT_SYSTEM_WARNING,
     EVENT_SYSTEM_STATUS_CHANGED,
+    EVENT_SYSTEM_POWER_SLEEP  = 0x5010,   /* PC休眠，设备进入低功耗 */
+    EVENT_SYSTEM_POWER_WAKEUP = 0x5011,   /* PC唤醒，设备恢复正常 */
     
     EVENT_COMM_DATA_RECEIVED = 0x6000,
     EVENT_COMM_CONNECTION_STATUS,
@@ -128,6 +130,7 @@ typedef struct {
 #define MODULE_ID_LED           0x0006
 #define MODULE_ID_SENSOR        0x0007
 #define MODULE_ID_SYSTEM        0x0008
+#define MODULE_ID_POWER         0x0009
 
 /* 核心函数 */
 int event_bus_init(void);

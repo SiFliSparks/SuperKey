@@ -23,6 +23,7 @@
 #include "widget/widget_manager.h"
 #include "mp3/mp3_player_controller.h"
 #include "device/sdcard_monitor.h"
+#include "manager/power_manager.h"
 
 static bool g_system_ready = false;
 
@@ -40,6 +41,9 @@ int main(void)
     serial_data_handler_init();
     led_effects_manager_start();
     
+    /* 电源管理初始化 (需要在 event_bus 和 lcd 之后) */
+    power_manager_init();
+    
     /* 传感器初始化 */
     sht30_controller_init();
     sht30_controller_start_continuous(5000);
@@ -56,11 +60,17 @@ int main(void)
 
     /* 主循环 */
     while (g_system_ready) {
-        uint32_t ms = lv_timer_handler();
-        screen_process_switch_request();
-        screen_context_process_background_restore();
-        uint32_t sleep_time = (ms > 0 && ms < 100) ? ms : 50;
-        rt_thread_mdelay(sleep_time);
+        if (power_manager_get_state() == POWER_STATE_NORMAL) {
+            /* 正常模式: LVGL刷新 + 屏幕状态处理 */
+            uint32_t ms = lv_timer_handler();
+            screen_process_switch_request();
+            screen_context_process_background_restore();
+            uint32_t sleep_time = (ms > 0 && ms < 100) ? ms : 50;
+            rt_thread_mdelay(sleep_time);
+        } else {
+            /* 休眠模式: 大幅降低主循环频率，减少CPU占用 */
+            rt_thread_mdelay(200);
+        }
     }
 
     /* 关闭清理 */

@@ -13,6 +13,7 @@
 #include "../version/firmware_version.h"
 #include "../fs/dfu_trigger.h"  /* DFU升级触发 */
 #include "../device/serial_data_handler.h"
+#include "../manager/power_manager.h"        /* 低功耗管理 */
 #define SERIAL_RX_BUFFER_SIZE 1024
 #define SERIAL_DEVICE_NAME "uart1"
 
@@ -1133,6 +1134,22 @@ static void handle_finsh_key_value(const char *key, const char *value)
     else if (strcmp(key, "custom_key") == 0) {
         custom_key_parse_and_set(value);
     }
+    /* ==================== 电源管理命令 ==================== */
+    else if (strcmp(key, "power_mode") == 0) {
+        if (strcmp(value, "sleep") == 0) {
+            event_bus_publish(EVENT_SYSTEM_POWER_SLEEP,
+                             NULL, 0,
+                             EVENT_PRIORITY_HIGH, MODULE_ID_SERIAL_COMM);
+            serial_send_response("POWER:sleep");
+        } else if (strcmp(value, "normal") == 0) {
+            event_bus_publish(EVENT_SYSTEM_POWER_WAKEUP,
+                             NULL, 0,
+                             EVENT_PRIORITY_HIGH, MODULE_ID_SERIAL_COMM);
+            serial_send_response("POWER:normal");
+        } else {
+            serial_send_response("POWER:invalid");
+        }
+    }
     /* DFU升级命令 */
     else if (strcmp(key, "dfu") == 0 || strcmp(key, "dfu_enter") == 0) {
         /* 进入DFU模式: sys_set dfu enter 或 sys_set dfu_enter 1 */
@@ -1183,6 +1200,20 @@ static void process_finsh_command(const char *cmd_str)
         value[127] = '\0';
         
         remove_quotes(value);
+        
+        /* 休眠状态下的命令过滤 */
+        if (power_manager_get_state() == POWER_STATE_SLEEP) {
+            if (strcmp(key, "power_mode") == 0) {
+                /* power_mode 命令正常处理 (用于显式唤醒) */
+                handle_finsh_key_value(key, value);
+            } else {
+                /* 其他命令在休眠状态下直接丢弃，不触发唤醒 */
+                rt_kprintf("[PWR] Sleep: drop sys_set %s\n", key);
+            }
+            g_serial_status.total_commands_received++;
+            update_connection_status();
+            return;
+        }
         
         handle_finsh_key_value(key, value);
         
@@ -1429,11 +1460,6 @@ int serial_data_handler_deinit(void)
 }
 
 /**
- * @brief 发送响应字符串到上位机
- * @param response 响应字符串
- * @return 发送的字节数, <0 失败
- */
-/**
  * @brief 发送响应字符串到上位机（同时通过UART和CDC发送）
  * @param response 响应字符串
  * @return 发送的字节数, <0 失败
@@ -1542,6 +1568,12 @@ static void handle_sys_get_command(const char *key)
         /* 查询DFU命令帮助 */
         snprintf(response, sizeof(response), 
                  "DFU_HELP:sys_set dfu enter|set|flags");
+    }
+    /* 查询电源状态 */
+    else if (strcmp(key, "power") == 0 || strcmp(key, "power_mode") == 0) {
+        const char *state_str = (power_manager_get_state() == POWER_STATE_SLEEP)
+                                ? "sleep" : "normal";
+        snprintf(response, sizeof(response), "POWER_MODE:%s", state_str);
     }
     else {
         /* 未知查询 */
