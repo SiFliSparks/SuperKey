@@ -23,8 +23,7 @@
 #include "widget/widget_manager.h"
 #include "mp3/mp3_player_controller.h"
 #include "device/sdcard_monitor.h"
-#include "manager/power_manager.h"          /* 低功耗管理 */
-
+#include "manager/power_manager.h"
 static bool g_system_ready = false;
 
 int main(void)
