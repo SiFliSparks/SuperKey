@@ -23,7 +23,7 @@ extern "C" {
  * @brief 次版本号 (Minor)
  * 新增功能但保持向下兼容时递增
  */
-#define FW_VERSION_MINOR        3
+#define FW_VERSION_MINOR        4
 
 /**
  * @brief 修订版本号 (Patch)
