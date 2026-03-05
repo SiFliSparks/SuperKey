@@ -13,6 +13,7 @@
 #include "../version/firmware_version.h"
 #include "../fs/dfu_trigger.h"  /* DFU升级触发 */
 #include "../device/serial_data_handler.h"
+#include "../screen/screen_core.h"
 #include "../manager/power_manager.h"        /* 低功耗管理 */
 #define SERIAL_RX_BUFFER_SIZE 1024
 #define SERIAL_DEVICE_NAME "uart1"
@@ -448,9 +449,14 @@ static struct {
     /* 系统监控数据 */
     float cpu_usage;
     float cpu_temp;
+    float cpu_freq;
     float mem_usage;
+    float mem_used;
+    float mem_total;
     float gpu_usage;
     float gpu_temp;
+    float gpu_mem_used;
+    float gpu_mem_total;
     float net_up;
     float net_down;
     bool system_valid;
@@ -1051,6 +1057,11 @@ static void handle_weather_data(const char *key, const char *value)
 
 static void handle_system_data(const char *key, const char *value)
 {
+    /* 休眠状态下丢弃性能数据，避免无效更新 */
+    if (power_manager_get_state() == POWER_STATE_SLEEP) {
+        return;
+    }
+
     float val = atof(value);
     
     if (strcmp(key, "cpu") == 0) {
@@ -1060,14 +1071,29 @@ static void handle_system_data(const char *key, const char *value)
     else if (strcmp(key, "cpu_temp") == 0) {
         g_finsh_data.cpu_temp = val;
     }
+    else if (strcmp(key, "cpu_freq") == 0) {
+        g_finsh_data.cpu_freq = val;
+    }
     else if (strcmp(key, "mem") == 0) {
         g_finsh_data.mem_usage = val;
+    }
+    else if (strcmp(key, "mem_used") == 0) {
+        g_finsh_data.mem_used = val;
+    }
+    else if (strcmp(key, "mem_total") == 0) {
+        g_finsh_data.mem_total = val;
     }
     else if (strcmp(key, "gpu") == 0) {
         g_finsh_data.gpu_usage = val;
     }
     else if (strcmp(key, "gpu_temp") == 0) {
         g_finsh_data.gpu_temp = val;
+    }
+    else if (strcmp(key, "gpu_mem_used") == 0) {
+        g_finsh_data.gpu_mem_used = val;
+    }
+    else if (strcmp(key, "gpu_mem_total") == 0) {
+        g_finsh_data.gpu_mem_total = val;
     }
     else if (strcmp(key, "net_up") == 0) {
         g_finsh_data.net_up = val;
@@ -1081,9 +1107,14 @@ static void handle_system_data(const char *key, const char *value)
         
         sys_data.cpu_usage = g_finsh_data.cpu_usage;
         sys_data.cpu_temp = g_finsh_data.cpu_temp;
+        sys_data.cpu_freq = g_finsh_data.cpu_freq;
         sys_data.gpu_usage = g_finsh_data.gpu_usage;
         sys_data.gpu_temp = g_finsh_data.gpu_temp;
+        sys_data.gpu_mem_used = g_finsh_data.gpu_mem_used;
+        sys_data.gpu_mem_total = g_finsh_data.gpu_mem_total;
         sys_data.ram_usage = g_finsh_data.mem_usage;
+        sys_data.ram_used = g_finsh_data.mem_used;
+        sys_data.ram_total = g_finsh_data.mem_total;
         sys_data.net_upload_speed = g_finsh_data.net_up;
         sys_data.net_download_speed = g_finsh_data.net_down;
         sys_data.valid = true;
@@ -1122,9 +1153,12 @@ static void handle_finsh_key_value(const char *key, const char *value)
         handle_weather_data(key, value);
     }
     else if (strcmp(key, "cpu") == 0 || strcmp(key, "cpu_temp") == 0 || 
-             strcmp(key, "mem") == 0 || strcmp(key, "gpu") == 0 || 
-             strcmp(key, "gpu_temp") == 0 || strcmp(key, "net_up") == 0 || 
-             strcmp(key, "net_down") == 0) {
+             strcmp(key, "cpu_freq") == 0 ||
+             strcmp(key, "mem") == 0 || strcmp(key, "mem_used") == 0 ||
+             strcmp(key, "mem_total") == 0 ||
+             strcmp(key, "gpu") == 0 || strcmp(key, "gpu_temp") == 0 ||
+             strcmp(key, "gpu_mem_used") == 0 || strcmp(key, "gpu_mem_total") == 0 ||
+             strcmp(key, "net_up") == 0 || strcmp(key, "net_down") == 0) {
         handle_system_data(key, value);
     }
     /* 新增 */
@@ -1137,14 +1171,10 @@ static void handle_finsh_key_value(const char *key, const char *value)
     /* ==================== 电源管理命令 ==================== */
     else if (strcmp(key, "power_mode") == 0) {
         if (strcmp(value, "sleep") == 0) {
-            event_bus_publish(EVENT_SYSTEM_POWER_SLEEP,
-                             NULL, 0,
-                             EVENT_PRIORITY_HIGH, MODULE_ID_SERIAL_COMM);
+            screen_core_post_power_sleep();
             serial_send_response("POWER:sleep");
         } else if (strcmp(value, "normal") == 0) {
-            event_bus_publish(EVENT_SYSTEM_POWER_WAKEUP,
-                             NULL, 0,
-                             EVENT_PRIORITY_HIGH, MODULE_ID_SERIAL_COMM);
+            screen_core_post_power_wakeup();
             serial_send_response("POWER:normal");
         } else {
             serial_send_response("POWER:invalid");
@@ -1170,6 +1200,16 @@ static void handle_finsh_key_value(const char *key, const char *value)
         }
         else {
             serial_send_response("DFU:invalid_cmd");
+        }
+    }
+    /* LCD rotation: sys_set lcd_rotation 0/90/180/270 */
+    else if (strcmp(key, "lcd_rotation") == 0) {
+        int degree = atoi(value);
+        if (degree == 0 || degree == 90 || degree == 180 || degree == 270) {
+            screen_core_post_lcd_rotation(degree);
+            serial_send_response("LCD:rotation_ok");
+        } else {
+            serial_send_response("LCD:invalid_rotation");
         }
     }
     else {
@@ -1200,20 +1240,6 @@ static void process_finsh_command(const char *cmd_str)
         value[127] = '\0';
         
         remove_quotes(value);
-        
-        /* 休眠状态下的命令过滤 */
-        if (power_manager_get_state() == POWER_STATE_SLEEP) {
-            if (strcmp(key, "power_mode") == 0) {
-                /* power_mode 命令正常处理 (用于显式唤醒) */
-                handle_finsh_key_value(key, value);
-            } else {
-                /* 其他命令在休眠状态下直接丢弃，不触发唤醒 */
-                rt_kprintf("[PWR] Sleep: drop sys_set %s\n", key);
-            }
-            g_serial_status.total_commands_received++;
-            update_connection_status();
-            return;
-        }
         
         handle_finsh_key_value(key, value);
         
@@ -1459,6 +1485,11 @@ int serial_data_handler_deinit(void)
     return RT_EOK;
 }
 
+/**
+ * @brief 发送响应字符串到上位机
+ * @param response 响应字符串
+ * @return 发送的字节数, <0 失败
+ */
 /**
  * @brief 发送响应字符串到上位机（同时通过UART和CDC发送）
  * @param response 响应字符串

@@ -417,16 +417,9 @@ lv_obj_t* create_usage_arc(lv_obj_t *parent, lv_color_t color, lv_obj_t **label_
     lv_obj_set_style_border_width(arc, 0, 0);
     lv_obj_set_style_pad_all(arc, 0, 0);
     
-    /* 在Arc中心创建百分比标签 */
-    lv_obj_t *label = lv_label_create(arc);
-    lv_label_set_text(label, "--%");
-    lv_obj_add_style(label, get_style_medium(), 0);
-    lv_obj_set_style_text_color(label, color, 0);
-    lv_obj_center(label);
-    
-    /* 返回标签指针 */
+    /* label_out 不再在此创建，由调用者自行在 arc 内添加内容 */
     if (label_out) {
-        *label_out = label;
+        *label_out = NULL;
     }
     
     return arc;

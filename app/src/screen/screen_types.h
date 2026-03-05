@@ -157,18 +157,23 @@ typedef struct {
 
 /* 简化版系统监控数据结构 - 仅包含finsh协议支持的字段 */
 typedef struct {
-    /* CPU相关 - 来自cpu和cpu_temp字段 */
+    /* CPU相关 */
     float cpu_usage;        /* CPU使用率 (%) */
     float cpu_temp;         /* CPU温度 (°C) */
+    float cpu_freq;         /* CPU频率 (MHz) */
     
-    /* GPU相关 - 来自gpu和gpu_temp字段 */
+    /* GPU相关 */
     float gpu_usage;        /* GPU使用率 (%) */
     float gpu_temp;         /* GPU温度 (°C) */
+    float gpu_mem_used;     /* GPU显存已用 (GB) */
+    float gpu_mem_total;    /* GPU显存总计 (GB) */
     
-    /* 内存相关 - 来自mem字段 */
+    /* 内存相关 */
     float ram_usage;        /* 内存使用率 (%) */
+    float ram_used;         /* 内存已用 (GB) */
+    float ram_total;        /* 内存总计 (GB) */
     
-    /* 网络相关 - 来自net_up和net_down字段 */
+    /* 网络相关 */
     float net_upload_speed; /* 上传速度 (MB/s) */
     float net_download_speed; /* 下载速度 (MB/s) */
     

@@ -23,7 +23,7 @@
 #include "widget/widget_manager.h"
 #include "mp3/mp3_player_controller.h"
 #include "device/sdcard_monitor.h"
-#include "manager/power_manager.h"
+#include "manager/power_manager.h"          /* 低功耗管理 */
 
 static bool g_system_ready = false;
 
@@ -68,7 +68,8 @@ int main(void)
             uint32_t sleep_time = (ms > 0 && ms < 100) ? ms : 50;
             rt_thread_mdelay(sleep_time);
         } else {
-            /* 休眠模式: 大幅降低主循环频率，减少CPU占用 */
+            /* 休眠模式: 仍需处理消息队列（唤醒/旋转命令），但不刷LVGL */
+            screen_process_switch_request();
             rt_thread_mdelay(200);
         }
     }

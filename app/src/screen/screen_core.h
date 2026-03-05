@@ -20,6 +20,9 @@ typedef enum {
     SCREEN_MSG_SWITCH_GROUP,
     SCREEN_MSG_ENTER_L2,
     SCREEN_MSG_RETURN_L1,
+    SCREEN_MSG_LCD_ROTATION,
+    SCREEN_MSG_POWER_SLEEP,
+    SCREEN_MSG_POWER_WAKEUP,
     SCREEN_MSG_MAX
 } screen_msg_type_t;
 
@@ -45,6 +48,7 @@ typedef struct {
         weather_data_t weather_data;
         weather_forecast_data_t forecast_data;
         system_monitor_data_t system_data;
+        int lcd_rotation_degree;
     } data;
 } screen_message_t;
 
@@ -84,6 +88,9 @@ int screen_core_post_update_weather(const weather_data_t *data);
 int screen_core_post_update_system(const system_monitor_data_t *data);
 int screen_core_post_update_forecast(const weather_forecast_data_t *data);
 int screen_core_post_update_mp3(void);
+int screen_core_post_lcd_rotation(int degree);
+int screen_core_post_power_sleep(void);
+int screen_core_post_power_wakeup(void);
 
 /* 消息处理 - 仅在GUI线程调用 */
 int screen_core_process_messages(void);

@@ -887,85 +887,132 @@ int screen_ui_update_weather_display(const weather_data_t *data)
     return 0;
 }
 
+/* Usage color: 0-50% green, 50-80% yellow, 80-100% red */
+static lv_color_t usage_color(float pct)
+{
+    if (pct >= 80.0f) return lv_color_make(255, 60, 60);
+    if (pct >= 50.0f) return lv_color_make(255, 215, 0);
+    return lv_color_make(100, 255, 150);
+}
+
+/* Temp color: <80 light blue, >=80 light red */
+static lv_color_t temp_color(float deg)
+{
+    if (deg >= 80.0f) return lv_color_make(255, 100, 100);
+    return lv_color_make(100, 180, 255);
+}
+
 int screen_ui_update_system_display(const system_monitor_data_t *data)
 {
     if (!g_ui_mgr.initialized || g_ui_mgr.current_group != SCREEN_GROUP_2 || !data || !data->valid) {
         return 0;
     }
 
+    /* CPU温度 - 动态颜色 */
     if (g_ui_mgr.handles.group2_cpu_gpu.cpu_temp && lv_obj_is_valid(g_ui_mgr.handles.group2_cpu_gpu.cpu_temp)) {
         char temp_str[16];
         rt_snprintf(temp_str, sizeof(temp_str), "%.1f°C", data->cpu_temp);
         lv_label_set_text(g_ui_mgr.handles.group2_cpu_gpu.cpu_temp, temp_str);
+        lv_obj_set_style_text_color(g_ui_mgr.handles.group2_cpu_gpu.cpu_temp, temp_color(data->cpu_temp), 0);
     }
 
-    /* 更新CPU仪表 */
+    /* CPU仪表 - 圆环 + 占用率文字动态颜色 */
     if (g_ui_mgr.handles.group2_cpu_gpu.cpu_gauge && lv_obj_is_valid(g_ui_mgr.handles.group2_cpu_gpu.cpu_gauge)) {
-        /* 更新仪表数值 */
+        lv_color_t cpu_clr = usage_color(data->cpu_usage);
         lv_arc_set_value(g_ui_mgr.handles.group2_cpu_gpu.cpu_gauge, (int16_t)data->cpu_usage);
+        lv_obj_set_style_arc_color(g_ui_mgr.handles.group2_cpu_gpu.cpu_gauge, cpu_clr, LV_PART_INDICATOR);
         
-        /* 更新中心百分比文字 */
         if (g_ui_mgr.handles.group2_cpu_gpu.cpu_usage && lv_obj_is_valid(g_ui_mgr.handles.group2_cpu_gpu.cpu_usage)) {
             char usage_str[16];
             rt_snprintf(usage_str, sizeof(usage_str), "%.0f%%", data->cpu_usage);
             lv_label_set_text(g_ui_mgr.handles.group2_cpu_gpu.cpu_usage, usage_str);
+            lv_obj_set_style_text_color(g_ui_mgr.handles.group2_cpu_gpu.cpu_usage, cpu_clr, 0);
         }
     }
 
+    /* CPU频率 */
+    if (g_ui_mgr.handles.group2_cpu_gpu.cpu_freq && lv_obj_is_valid(g_ui_mgr.handles.group2_cpu_gpu.cpu_freq)) {
+        char freq_str[16];
+        if (data->cpu_freq > 0) {
+            rt_snprintf(freq_str, sizeof(freq_str), "%.0fMHz", data->cpu_freq);
+        } else {
+            rt_snprintf(freq_str, sizeof(freq_str), "-- MHz");
+        }
+        lv_label_set_text(g_ui_mgr.handles.group2_cpu_gpu.cpu_freq, freq_str);
+    }
+
+    /* GPU温度 - 动态颜色 */
     if (g_ui_mgr.handles.group2_cpu_gpu.gpu_temp && lv_obj_is_valid(g_ui_mgr.handles.group2_cpu_gpu.gpu_temp)) {
         char temp_str[16];
         rt_snprintf(temp_str, sizeof(temp_str), "%.1f°C", data->gpu_temp);
         lv_label_set_text(g_ui_mgr.handles.group2_cpu_gpu.gpu_temp, temp_str);
+        lv_obj_set_style_text_color(g_ui_mgr.handles.group2_cpu_gpu.gpu_temp, temp_color(data->gpu_temp), 0);
     }
 
-    /* 更新GPU仪表 */
+    /* GPU仪表 - 圆环 + 占用率文字动态颜色 */
     if (g_ui_mgr.handles.group2_cpu_gpu.gpu_gauge && lv_obj_is_valid(g_ui_mgr.handles.group2_cpu_gpu.gpu_gauge)) {
-        /* 更新仪表数值 */
+        lv_color_t gpu_clr = usage_color(data->gpu_usage);
         lv_arc_set_value(g_ui_mgr.handles.group2_cpu_gpu.gpu_gauge, (int16_t)data->gpu_usage);
+        lv_obj_set_style_arc_color(g_ui_mgr.handles.group2_cpu_gpu.gpu_gauge, gpu_clr, LV_PART_INDICATOR);
         
-        /* 更新中心百分比文字 */
         if (g_ui_mgr.handles.group2_cpu_gpu.gpu_usage && lv_obj_is_valid(g_ui_mgr.handles.group2_cpu_gpu.gpu_usage)) {
             char usage_str[16];
             rt_snprintf(usage_str, sizeof(usage_str), "%.0f%%", data->gpu_usage);
             lv_label_set_text(g_ui_mgr.handles.group2_cpu_gpu.gpu_usage, usage_str);
+            lv_obj_set_style_text_color(g_ui_mgr.handles.group2_cpu_gpu.gpu_usage, gpu_clr, 0);
         }
     }
 
+    /* GPU显存 */
+    if (g_ui_mgr.handles.group2_cpu_gpu.gpu_mem_used && lv_obj_is_valid(g_ui_mgr.handles.group2_cpu_gpu.gpu_mem_used)) {
+        char buf[16];
+        if (data->gpu_mem_used > 0) {
+            rt_snprintf(buf, sizeof(buf), "%.1fG", data->gpu_mem_used);
+        } else {
+            rt_snprintf(buf, sizeof(buf), "-- GB");
+        }
+        lv_label_set_text(g_ui_mgr.handles.group2_cpu_gpu.gpu_mem_used, buf);
+    }
+    if (g_ui_mgr.handles.group2_cpu_gpu.gpu_mem_total && lv_obj_is_valid(g_ui_mgr.handles.group2_cpu_gpu.gpu_mem_total)) {
+        char buf[16];
+        if (data->gpu_mem_total > 0) {
+            rt_snprintf(buf, sizeof(buf), "%.1fG", data->gpu_mem_total);
+        } else {
+            rt_snprintf(buf, sizeof(buf), "-- GB");
+        }
+        lv_label_set_text(g_ui_mgr.handles.group2_cpu_gpu.gpu_mem_total, buf);
+    }
+
+    /* 内存进度条 - 动态颜色 */
     if (g_ui_mgr.handles.group2_memory.ram_usage && 
         lv_obj_is_valid(g_ui_mgr.handles.group2_memory.ram_usage)) {
-        char ram_str[16];
-        rt_snprintf(ram_str, sizeof(ram_str), "%.1f%%", data->ram_usage);
-        lv_label_set_text(g_ui_mgr.handles.group2_memory.ram_usage, ram_str);
-        static uint8_t mem_update_counter = 0;
-    mem_update_counter++;
-    
-    if (mem_update_counter >= 5) {
-        mem_update_counter = 0;
-        
-        if (g_ui_mgr.handles.group2_memory.ram_chart && 
-            lv_obj_is_valid(g_ui_mgr.handles.group2_memory.ram_chart)) {
-            
-            for (int i = 0; i < 4; i++) {
-                chart_history.mem_history[i] = chart_history.mem_history[i + 1];
+        lv_bar_set_value(g_ui_mgr.handles.group2_memory.ram_usage,
+                         (int32_t)data->ram_usage, LV_ANIM_OFF);
+        lv_obj_set_style_bg_color(g_ui_mgr.handles.group2_memory.ram_usage,
+                                  usage_color(data->ram_usage), LV_PART_INDICATOR);
+
+        if (g_ui_mgr.handles.group2_memory.ram_used &&
+            lv_obj_is_valid(g_ui_mgr.handles.group2_memory.ram_used)) {
+            char buf[16];
+            if (data->ram_used > 0) {
+                rt_snprintf(buf, sizeof(buf), "%.1f GB", data->ram_used);
+            } else {
+                rt_snprintf(buf, sizeof(buf), "-- GB");
             }
-            
-            lv_coord_t bar_height = (lv_coord_t)((data->ram_usage * 46.0f / 100.0f) + 2.0f);
-            if (bar_height < 2) bar_height = 2;
-            if (bar_height > 48) bar_height = 48;
-            chart_history.mem_history[4] = bar_height;
-            
-            for (int i = 0; i < 5; i++) {
-                lv_obj_t *bar = lv_obj_get_child(g_ui_mgr.handles.group2_memory.ram_chart, i * 2 + 1);
-                if (bar && lv_obj_is_valid(bar)) {
-                    lv_coord_t h = chart_history.mem_history[i];
-                    if (h < 2) h = 2;
-                    lv_obj_set_height(bar, h);
-                    lv_obj_set_y(bar, 48 - h);
-                }
+            lv_label_set_text(g_ui_mgr.handles.group2_memory.ram_used, buf);
+        }
+
+        if (g_ui_mgr.handles.group2_memory.ram_total &&
+            lv_obj_is_valid(g_ui_mgr.handles.group2_memory.ram_total)) {
+            char buf[16];
+            if (data->ram_total > 0) {
+                rt_snprintf(buf, sizeof(buf), "%.1f GB", data->ram_total);
+            } else {
+                rt_snprintf(buf, sizeof(buf), "-- GB");
             }
+            lv_label_set_text(g_ui_mgr.handles.group2_memory.ram_total, buf);
         }
     }
-}
     
     if (g_ui_mgr.handles.group2_network.net_upload && 
         lv_obj_is_valid(g_ui_mgr.handles.group2_network.net_upload)) {

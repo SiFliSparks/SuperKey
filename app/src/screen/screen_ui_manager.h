@@ -65,16 +65,20 @@ typedef struct {
         lv_obj_t *cpu_usage;
         lv_obj_t *cpu_temp;
         lv_obj_t *cpu_gauge;
+        lv_obj_t *cpu_freq;
         lv_obj_t *gpu_title;
         lv_obj_t *gpu_usage;
         lv_obj_t *gpu_temp;
         lv_obj_t *gpu_gauge;
+        lv_obj_t *gpu_mem_used;
+        lv_obj_t *gpu_mem_total;
     } group2_cpu_gpu;
     
     struct {
         lv_obj_t *ram_title;
         lv_obj_t *ram_usage;
-        lv_obj_t *ram_chart;
+        lv_obj_t *ram_used;     /* "22.7 GB" */
+        lv_obj_t *ram_total;    /* "47.2 GB" */
     } group2_memory;
     
     struct {

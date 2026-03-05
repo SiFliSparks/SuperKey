@@ -8,6 +8,8 @@
 #include <time.h>
 #include <string.h>
 #include "../screen/screen_context.h"
+#include "../manager/power_manager.h"
+#include "lvgl.h"
 
 #define MESSAGE_QUEUE_SIZE 32
 #define MESSAGE_TIMEOUT_MS 1
@@ -22,6 +24,7 @@ static int process_enter_l2_message(const screen_l2_enter_msg_t *msg);
 static int process_return_l1_message(void);
 static int process_update_forecast_message(const weather_forecast_data_t *data);
 static int process_update_mp3_message(void);
+static int process_lcd_rotation_message(int degree);
 
 int screen_core_init(void)
 {
@@ -200,6 +203,49 @@ int screen_core_post_update_mp3(void)
     return (result == RT_EOK) ? 0 : -RT_ERROR;
 }
 
+int screen_core_post_lcd_rotation(int degree)
+{
+    if (!g_core.message_queue) {
+        return -RT_ERROR;
+    }
+    
+    screen_message_t msg = {0};
+    msg.type = SCREEN_MSG_LCD_ROTATION;
+    msg.timestamp = rt_tick_get();
+    msg.data.lcd_rotation_degree = degree;
+    
+    rt_err_t result = rt_mq_send(g_core.message_queue, &msg, sizeof(msg));
+    return (result == RT_EOK) ? 0 : -RT_ERROR;
+}
+
+int screen_core_post_power_sleep(void)
+{
+    if (!g_core.message_queue) {
+        return -RT_ERROR;
+    }
+    
+    screen_message_t msg = {0};
+    msg.type = SCREEN_MSG_POWER_SLEEP;
+    msg.timestamp = rt_tick_get();
+    
+    rt_err_t result = rt_mq_send(g_core.message_queue, &msg, sizeof(msg));
+    return (result == RT_EOK) ? 0 : -RT_ERROR;
+}
+
+int screen_core_post_power_wakeup(void)
+{
+    if (!g_core.message_queue) {
+        return -RT_ERROR;
+    }
+    
+    screen_message_t msg = {0};
+    msg.type = SCREEN_MSG_POWER_WAKEUP;
+    msg.timestamp = rt_tick_get();
+    
+    rt_err_t result = rt_mq_send(g_core.message_queue, &msg, sizeof(msg));
+    return (result == RT_EOK) ? 0 : -RT_ERROR;
+}
+
 int screen_core_process_messages(void)
 {
     if (!g_core.message_queue) {
@@ -240,6 +286,15 @@ int screen_core_process_messages(void)
                 break;
             case SCREEN_MSG_RETURN_L1:
                 process_return_l1_message();
+                break;
+            case SCREEN_MSG_LCD_ROTATION:
+                process_lcd_rotation_message(msg.data.lcd_rotation_degree);
+                break;
+            case SCREEN_MSG_POWER_SLEEP:
+                power_manager_enter_sleep();
+                break;
+            case SCREEN_MSG_POWER_WAKEUP:
+                power_manager_exit_sleep();
                 break;
             default:
                 break;
@@ -507,6 +562,32 @@ static int process_return_l1_message(void)
     }
     
     return ret;
+}
+
+static int process_lcd_rotation_message(int degree)
+{
+    extern int lcd_set_rotation(int degrees);
+    rt_device_t lcd = rt_device_find("lcd");
+
+    if (!lcd) return -1;
+
+    /* POWEROFF LCD — safe in main thread context */
+    rt_device_control(lcd, RTGRAPHIC_CTRL_POWEROFF, RT_NULL);
+    rt_thread_mdelay(50);
+
+    /* Set MADCTL while LCD is idle */
+    lcd_set_rotation(degree);
+    rt_thread_mdelay(50);
+
+    /* POWERON — re-inits LCD, LCD_Drv_Init uses g_lcd_rotation */
+    rt_device_control(lcd, RTGRAPHIC_CTRL_POWERON, RT_NULL);
+    rt_thread_mdelay(300);
+
+    /* Force full redraw — safe because we're in main thread */
+    lv_obj_invalidate(lv_scr_act());
+
+    rt_kprintf("[LCD] Rotation %d applied in main thread\n", degree);
+    return 0;
 }
 
 screen_group_t screen_core_get_current_group(void)

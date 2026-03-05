@@ -108,7 +108,7 @@
 #endif
 
 /* 定义液晶分辨率 */
-#define USE_HORIZONTAL 0 // 设置横屏或者竖屏显示 0或1为竖屏 2或3为横屏
+#define USE_HORIZONTAL 1 // 设置横屏或者竖屏显示 0或1为竖屏 2或3为横屏
 
 // 定义MAX/MIN宏（如果尚未定义）
 #ifndef MAX
@@ -160,6 +160,8 @@ static uint32_t LCD_ReadData(LCDC_HandleTypeDef *hlcdc, uint16_t RegValue, uint8
 static void LCD_WriteReg_More(LCDC_HandleTypeDef *hlcdc, uint16_t LCD_Reg, uint8_t *Parameters, uint32_t NbParameters);
 static uint16_t current_lcd_cs_pin;
 static uint16_t Region_Xpos0, Region_Ypos0, Region_Xpos1, Region_Ypos1;
+static LCDC_HandleTypeDef *g_hlcdc_ref = NULL;
+static uint16_t g_lcd_rotation = 0;
 
 static LCDC_InitTypeDef lcdc_int_cfg =
 {
@@ -315,10 +317,13 @@ static void LCD_Drv_Init(LCDC_HandleTypeDef *hlcdc)
     parameter[1] = 0xFF;
     LCD_WriteReg_More(hlcdc, 0xBA, parameter, 2);
 
-    if(USE_HORIZONTAL==0)parameter[0] = 0x00;
-    else if(USE_HORIZONTAL==1)parameter[0] = (0xC0);
-    else if(USE_HORIZONTAL==2)parameter[0] = (0x60);
-    else parameter[0] = (0xA0); 
+    /* Use runtime rotation instead of hardcoded USE_HORIZONTAL */
+    switch (g_lcd_rotation) {
+    case 90:  parameter[0] = 0x60; break;
+    case 180: parameter[0] = 0xC0; break;
+    case 270: parameter[0] = 0xA0; break;
+    default:  parameter[0] = 0x00; break;  /* 0° */
+    }
     LCD_WriteReg_More(hlcdc, 0x36, parameter, 1);
 
     LCD_WriteReg_More(hlcdc, 0x11, parameter, 0); 
@@ -335,6 +340,9 @@ static void LCD_Init(LCDC_HandleTypeDef *hlcdc)
 
     memcpy(&hlcdc->Init, &lcdc_int_cfg, sizeof(LCDC_InitTypeDef));
     HAL_LCDC_Init(hlcdc);
+
+    /* Save hlcdc for runtime rotation */
+    g_hlcdc_ref = hlcdc;
 
     LCD_Drv_Init(hlcdc);
 }
@@ -655,6 +663,63 @@ static void LCD_SetBrightness(LCDC_HandleTypeDef *hlcdc, uint8_t br)
     LCD_WriteReg_More(hlcdc, REG_WBRIGHT, &br, 1);
 }
 
+/* ============================================================
+ * Runtime LCD rotation via MADCTL (0x36)
+ *
+ * MADCTL bits for GC9107:
+ *   Bit 7: MY  (Row address order)
+ *   Bit 6: MX  (Column address order)
+ *   Bit 5: MV  (Row/Column exchange)
+ *
+ *   0x00 =   0°  (default)
+ *   0xC0 = 180°  (MY+MX)
+ *   0x60 =  90°  (MX+MV)
+ *   0xA0 = 270°  (MY+MV)
+ * ============================================================ */
+
+
+static void LCD_Rotate(LCDC_HandleTypeDef *hlcdc, LCD_DrvRotateTypeDef degree)
+{
+    uint8_t madctl;
+
+    switch ((int)degree) {
+    case 0:   madctl = 0x00; break;
+    case 90:  madctl = 0x60; break;
+    case 180: madctl = 0xC0; break;
+    case 270: madctl = 0xA0; break;
+    default:  return;
+    }
+
+    g_lcd_rotation = (uint16_t)degree;
+    LCD_WriteReg_More(hlcdc, 0x36, &madctl, 1);
+    rt_kprintf("[LCD] Rotate %d, MADCTL=0x%02X\n", (int)degree, madctl);
+}
+
+/**
+ * @brief Set LCD rotation at runtime (all 3 screens)
+ * @param degrees 0, 90, 180, or 270
+ * @return 0 on success, -1 on invalid input
+ */
+int lcd_set_rotation(int degrees)
+{
+    if (degrees != 0 && degrees != 90 && degrees != 180 && degrees != 270)
+        return -1;
+
+    if (g_hlcdc_ref) {
+        LCD_Rotate(g_hlcdc_ref, (LCD_DrvRotateTypeDef)degrees);
+    }
+    return 0;
+}
+
+/**
+ * @brief Get current LCD rotation
+ * @return 0, 90, 180, or 270
+ */
+int lcd_get_rotation(void)
+{
+    return (int)g_lcd_rotation;
+}
+
 static const LCD_DrvOpsDef GC9107_drv =
 {
     LCD_Init,
@@ -667,8 +732,12 @@ static const LCD_DrvOpsDef GC9107_drv =
     LCD_ReadPixel,
     LCD_SetColorMode,
     LCD_SetBrightness,
-    NULL,
-    NULL
+    NULL,           /* IdleModeOn */
+    NULL,           /* IdleModeOff */
+    LCD_Rotate,     /* Rotate */
+    NULL,           /* TimeoutDbg */
+    NULL,           /* TimeoutReset */
+    NULL            /* ESDDetect */
 };
 
 LCD_DRIVER_EXPORT2(GC9107, THE_LCD_ID, &lcdc_int_cfg,
