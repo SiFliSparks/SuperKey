@@ -85,13 +85,23 @@ jobs:
         mkdir -p release/SuperKey_${VERSION}
         cp app/project/build_${{ matrix.target }}_hcpu/bootloader/bootloader.bin release/SuperKey_${VERSION}/
         cp app/project/build_${{ matrix.target }}_hcpu/ftab/ftab.bin release/SuperKey_${VERSION}/
-        cp app/project/build_${{ matrix.target }}_hcpu/main.bin release/SuperKey_${VERSION}/
-        # cp sftool_param.json release/SuperKey_${VERSION}/
+        
+        # main.bin 现在是目录，包含 ER_IROM1/2/3.bin
+        if [ -d "app/project/build_${{ matrix.target }}_hcpu/main.bin" ]; then
+          mkdir -p release/SuperKey_${VERSION}/main.bin
+          cp app/project/build_${{ matrix.target }}_hcpu/main.bin/*.bin release/SuperKey_${VERSION}/main.bin/
+          echo "Copied main.bin directory (split bins)"
+        elif [ -f "app/project/build_${{ matrix.target }}_hcpu/main.bin" ]; then
+          cp app/project/build_${{ matrix.target }}_hcpu/main.bin release/SuperKey_${VERSION}/
+          echo "Copied main.bin single file (legacy)"
+        fi
         
         # 创建重命名的 zip 压缩包
         cd release
         zip -r SuperKey_${VERSION}.zip SuperKey_${VERSION}/
         echo "Created: SuperKey_${VERSION}.zip"
+        echo "Contents:"
+        unzip -l SuperKey_${VERSION}.zip
 
     - name: Create fw_verid.json (from commit message)
       if: steps.version.outputs.has_version == 'true'
@@ -152,13 +162,23 @@ jobs:
         mkdir -p release/SuperKey_${VERSION}
         cp app/project/build_${{ matrix.target }}_hcpu/bootloader/bootloader.bin release/SuperKey_${VERSION}/
         cp app/project/build_${{ matrix.target }}_hcpu/ftab/ftab.bin release/SuperKey_${VERSION}/
-        cp app/project/build_${{ matrix.target }}_hcpu/main.bin release/SuperKey_${VERSION}/
-        # cp sftool_param.json release/SuperKey_${VERSION}/
+        
+        # main.bin 现在是目录，包含 ER_IROM1/2/3.bin
+        if [ -d "app/project/build_${{ matrix.target }}_hcpu/main.bin" ]; then
+          mkdir -p release/SuperKey_${VERSION}/main.bin
+          cp app/project/build_${{ matrix.target }}_hcpu/main.bin/*.bin release/SuperKey_${VERSION}/main.bin/
+          echo "Copied main.bin directory (split bins)"
+        elif [ -f "app/project/build_${{ matrix.target }}_hcpu/main.bin" ]; then
+          cp app/project/build_${{ matrix.target }}_hcpu/main.bin release/SuperKey_${VERSION}/
+          echo "Copied main.bin single file (legacy)"
+        fi
         
         # 创建重命名的 zip 压缩包
         cd release
         zip -r SuperKey_${VERSION}.zip SuperKey_${VERSION}/
         echo "Created: SuperKey_${VERSION}.zip"
+        echo "Contents:"
+        unzip -l SuperKey_${VERSION}.zip
 
     - name: Create fw_verid.json (from tag)
       if: startsWith(github.ref, 'refs/tags/') && steps.version.outputs.has_version != 'true'
@@ -245,4 +265,4 @@ jobs:
         bucket: ${{ secrets.COS_DOCS_BUCKET }}
         prefix: projects/superkey/download/
         artifacts: cos_root_artifacts/
-        delete_remote: false  # 不删除其他文件，只覆盖 fw_verid.json
+        delete_remote: false 
