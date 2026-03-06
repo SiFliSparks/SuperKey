@@ -23,7 +23,8 @@
 #include "widget/widget_manager.h"
 #include "mp3/mp3_player_controller.h"
 #include "device/sdcard_monitor.h"
-#include "manager/power_manager.h"
+#include "manager/power_manager.h"          /* 低功耗管理 */
+
 static bool g_system_ready = false;
 
 int main(void)
@@ -56,6 +57,11 @@ int main(void)
     create_triple_screen_display();
 
     g_system_ready = true;
+
+    /* 主动请求上位机下发数据（固件启动时间不确定，由固件决定何时准备好） */
+    rt_thread_mdelay(500);  /* 等待 USB CDC 枚举完成 */
+    serial_send_response("REQ:weather");
+    serial_send_response("REQ:time");
 
     /* 主循环 */
     while (g_system_ready) {
