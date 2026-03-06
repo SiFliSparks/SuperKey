@@ -23,8 +23,8 @@ typedef enum {
     SCREEN_GROUP_3,      // 第三组：HID快捷键
     SCREEN_GROUP_4,      // 第四组：实用工具（木鱼/番茄钟/秒表）
     SCREEN_GROUP_5,      // 第五组：自定义按键
-    SCREEN_GROUP_6,      // 第六组：MP3音乐播放器
-    SCREEN_GROUP_MAX
+    SCREEN_GROUP_MAX,
+    SCREEN_GROUP_6 = SCREEN_GROUP_MAX,  // 第六组：MP3音乐播放器（暂时隐藏，不参与滚动切换）
 } screen_group_t;
 
 /* 界面层级定义 */
