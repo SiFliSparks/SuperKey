@@ -4,6 +4,10 @@
 - 欢迎对此项目提出issue，我们将听取您的意见，对项目进行功能改进和更新，也欢迎参与到项目共建中。
 - 项目Demo视频见[Bilibili_带屏多功能宏键盘](https://www.bilibili.com/video/BV1XLWGzPEb6) 视频内展示的固件版本为v1.0.0。 
 - 点此进入[项目文档](https://sparks.sifli.com/projects/superkey/)
+
+## 更新内容
+2026年3月6日见更新内容[文档](https://sparks.sifli.com/projects/superkey/custom/newlab.html)
+
 ## 支持硬件
 - 本项目硬件已开源至立创开源硬件平台
 - [sf32-keyboard](https://oshwhub.com/sifli/sf32-keyboard)
@@ -90,10 +94,6 @@ sys_set led_effect breathing      # LED 灯效
 sys_get version                   # 查询固件版本
 sys_get power_mode                # 查询电源状态
 ```
-
-
-## 更新内容
-2026年3月6日见更新内容[文档](https://sparks.sifli.com/projects/superkey/custom/newlab.html)
 
 ## 开源协议
 
