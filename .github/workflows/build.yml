@@ -265,4 +265,5 @@ jobs:
         bucket: ${{ secrets.COS_DOCS_BUCKET }}
         prefix: projects/superkey/download/
         artifacts: cos_root_artifacts/
-        delete_remote: false 
+        delete_remote: false  # 不删除其他文件，只覆盖 fw_verid.json
+        flush_url: "https://sparks.sifli.com/projects/superkey/download/cos_root_artifacts/fw_verid.json"
